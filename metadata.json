@@ -1,0 +1,6 @@
+{
+  "name": "WhatsApp Bot Architecture Analyzer",
+  "description": "Analisis arsitektur mendalam, explorer kode interaktif, dan simulasi engine Experimental-Bell (WhatsApp Bot AI Baileys).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
