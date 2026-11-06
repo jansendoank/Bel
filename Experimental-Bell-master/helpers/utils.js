@@ -2,7 +2,10 @@ const { proto, getContentType, generateWAMessage } = 'baileys'.import();
 
 export default async function utils({ Exp, cht, is, store }) {
   try {
-    Data.preferences[cht?.id] ??= {};
+    const preferences = is?.jadibot
+      ? ((Data.preferencesBot ??= {})[Exp.user.id.split(':')[0]] ??= {})
+      : (Data.preferences ??= {});
+    preferences[cht?.id] ??= {};
     Data.setCmd ??= {};
 
     const { func } = Exp;
@@ -25,7 +28,14 @@ export default async function utils({ Exp, cht, is, store }) {
     const isProtocol = /^(protocolMessage)/.test(type);
     let isDelete = isProtocol && cht.message[type].type === 0;
 
-    if (isProtocol && !isDelete) return 'SKIP';
+    if (
+      (isProtocol && !isDelete) ||
+      cht?.sender?.includes('13135550002') ||
+      cht?.id?.includes('13135550002') ||
+      cht?.sender?.endsWith('@bot') ||
+      cht?.id?.endsWith('@bot')
+    )
+      return 'SKIP';
 
     const msgType =
       type === 'extendedTextMessage'
@@ -35,17 +45,23 @@ export default async function utils({ Exp, cht, is, store }) {
 
     cht.quoted = cht?.message?.[type]?.contextInfo?.quotedMessage || false;
 
+    let cmdFromMedia = (
+      is?.jadibot
+        ? (Data.jadibotDb?.[Exp?.user?.id?.split(':')[0]]?.setCmd ?? {})
+        : (Data.setCmd ?? {})
+    )[cht?.message?.[type]?.fileSha256?.toString()?.to('utf16le')];
+    if (cmdFromMedia === 'dadu') cmdFromMedia = '.dadu';
+
     cht.msg =
       cht.id === 'status@broadcast'
         ? null
-        : Data.setCmd[
-            cht?.message?.[type]?.fileSha256?.toString()?.to('utf16le')
-          ] ||
+        : cmdFromMedia ||
           [
             { type: 'conversation', msg: cht?.message?.[type] },
             { type: 'extendedTextMessage', msg: cht?.message?.[type]?.text },
             { type: 'imageMessage', msg: cht?.message?.[type]?.caption },
             { type: 'videoMessage', msg: cht?.message?.[type]?.caption },
+            { type: 'ptvMessage', msg: cht?.message?.[type]?.caption },
             { type: 'pollCreationMessageV3', msg: cht?.message?.[type]?.name },
             {
               type: 'ephemeralMessage',
@@ -111,8 +127,39 @@ export default async function utils({ Exp, cht, is, store }) {
           return cmd;
         })()
       : null;
-    cht.download = async () =>
-      Exp.func.download(cht?.message?.[type], cht.type);
+    cht.download = async () => {
+      let rawMsg = cht?.message?.[type];
+      let unwrapped =
+        rawMsg?.viewOnceMessage?.message ||
+        rawMsg?.viewOnceMessageV2?.message ||
+        rawMsg?.viewOnceMessageV2Extension?.message ||
+        rawMsg?.documentWithCaptionMessage?.message ||
+        rawMsg;
+      let interHeader = unwrapped?.interactiveMessage?.header;
+      let mediaObj =
+        interHeader?.videoMessage ||
+        interHeader?.imageMessage ||
+        interHeader?.documentMessage ||
+        cht.video ||
+        cht.image ||
+        cht.audio ||
+        cht.document ||
+        cht.sticker ||
+        unwrapped;
+      let mtype =
+        interHeader?.videoMessage || cht.video
+          ? 'video'
+          : interHeader?.imageMessage || cht.image
+            ? 'image'
+            : interHeader?.documentMessage || cht.document
+              ? 'document'
+              : cht.audio
+                ? 'audio'
+                : cht.sticker
+                  ? 'sticker'
+                  : cht.type;
+      return Exp.func.download(mediaObj, mtype);
+    };
 
     cht[cht.type] = cht?.message?.[type];
 
@@ -164,22 +211,97 @@ export default async function utils({ Exp, cht, is, store }) {
       cht.quoted.sender = await Exp.func['getSender'](quotedParticipant, {
         cht,
       });
-      cht.quoted.mtype = Object.keys(cht.quoted)[0];
+
+      let rawQuoted =
+        cht.quoted.viewOnceMessage?.message ||
+        cht.quoted.viewOnceMessageV2?.message ||
+        cht.quoted.viewOnceMessageV2Extension?.message ||
+        cht.quoted.documentWithCaptionMessage?.message ||
+        cht.quoted;
+
+      let inter = rawQuoted?.interactiveMessage;
+      let interHeader = inter?.header;
+
+      if (interHeader) {
+        if (interHeader.videoMessage) {
+          cht.quoted.videoMessage = interHeader.videoMessage;
+          cht.quoted.video = interHeader.videoMessage;
+        } else if (interHeader.imageMessage) {
+          cht.quoted.imageMessage = interHeader.imageMessage;
+          cht.quoted.image = interHeader.imageMessage;
+        } else if (interHeader.documentMessage) {
+          cht.quoted.documentMessage = interHeader.documentMessage;
+          cht.quoted.document = interHeader.documentMessage;
+        }
+      }
+
+      cht.quoted.mtype =
+        interHeader?.videoMessage
+          ? 'videoMessage'
+          : interHeader?.imageMessage
+            ? 'imageMessage'
+            : interHeader?.documentMessage
+              ? 'documentMessage'
+              : Object.keys(cht.quoted)[0];
+
       cht.quoted.type = Exp.func['getType'](cht.quoted.mtype);
       cht.quoted.memories = cfg?.register
         ? memories.has(cht.quoted.sender)
           ? await memories.get(cht.quoted.sender)
           : {}
         : await memories.get(cht.quoted.sender);
-      cht.quoted[cht.quoted.type] = cht?.quoted?.[cht.quoted.mtype];
+      cht.quoted[cht.quoted.type] =
+        interHeader?.videoMessage ||
+        interHeader?.imageMessage ||
+        interHeader?.documentMessage ||
+        cht?.quoted?.[cht.quoted.mtype] ||
+        rawQuoted?.[cht.quoted.mtype];
+
       cht.quoted.text =
         cht.quoted?.[cht.quoted.type]?.caption ||
         cht.quoted?.[cht.quoted.type]?.text ||
         cht.quoted?.conversation ||
+        inter?.body?.text ||
+        interHeader?.title ||
+        inter?.footer?.text ||
         false;
       cht.quoted.url = cht.quoted.text ? func.parseLink(cht?.quoted?.text) : [];
-      cht.quoted.download = async () =>
-        Exp.func.download(cht.quoted?.[cht.quoted.type], cht.quoted.type);
+      cht.quoted.download = async () => {
+        let q = cht.quoted;
+        let qRaw =
+          q.viewOnceMessage?.message ||
+          q.viewOnceMessageV2?.message ||
+          q.viewOnceMessageV2Extension?.message ||
+          q.documentWithCaptionMessage?.message ||
+          q;
+        let qHeader = qRaw?.interactiveMessage?.header;
+        let mediaObj =
+          qHeader?.videoMessage ||
+          qHeader?.imageMessage ||
+          qHeader?.documentMessage ||
+          q.video ||
+          q.image ||
+          q.audio ||
+          q.document ||
+          q.sticker ||
+          q[q.type] ||
+          q[q.mtype] ||
+          qRaw[q.mtype] ||
+          qRaw;
+        let mtype =
+          qHeader?.videoMessage || q.video
+            ? 'video'
+            : qHeader?.imageMessage || q.image
+              ? 'image'
+              : qHeader?.documentMessage || q.document
+                ? 'document'
+                : q.audio
+                  ? 'audio'
+                  : q.sticker
+                    ? 'sticker'
+                    : q.type || Exp.func['getType'](q.mtype);
+        return Exp.func.download(mediaObj, mtype);
+      };
       cht.quoted.stanzaId = cht?.message?.[type]?.contextInfo?.stanzaId;
       cht.quoted.delete = cht.quoted.del = async () =>
         Exp.sendMessage(cht.id, {
@@ -204,22 +326,54 @@ export default async function utils({ Exp, cht, is, store }) {
 
     Exp.number = Exp?.user?.id?.split(':')[0] + from.sender;
 
+    Exp.apiKey = is?.jadibot
+      ? Data.jadibot?.[is.jadibotId]?.apikey ||
+        (Data.preferencesBot?.[Exp?.user?.id?.split(':')[0]] ?? {}).apikey ||
+        api.xterm.key
+      : api.xterm.key;
+    cht.apiKey = Exp.apiKey;
+
     is.me = cht?.key?.fromMe || cht.sender == Exp.number;
+
+    const senderNum = cht.sender.split('@')[0].replace(/[^0-9]/g, '');
+    const isJadibotOwner =
+      is?.jadibot &&
+      ((Exp.jadibotOwner &&
+        String(Exp.jadibotOwner).replace(/[^0-9]/g, '') === senderNum) ||
+        (Data.jadibot?.[is.jadibotId]?.owners || []).some(
+          (o) => String(o).replace(/[^0-9]/g, '') === senderNum
+        ) ||
+        (Data.jadibotDb?.[Exp?.user?.id?.split(':')[0]]?.owners || []).some(
+          (o) => String(o).replace(/[^0-9]/g, '') === senderNum
+        ));
+    const isJadibotCoOwner =
+      is?.jadibot &&
+      ((Data.jadibot?.[is.jadibotId]?.coowners || []).some(
+        (o) => String(o).replace(/[^0-9]/g, '') === senderNum
+      ) ||
+        (Data.jadibotDb?.[Exp?.user?.id?.split(':')[0]]?.coowners || []).some(
+          (o) => String(o).replace(/[^0-9]/g, '') === senderNum
+        ));
+
     is.owner =
       global.owner.some((a) => {
         const jid = String(a)
           ?.split('@')[0]
           ?.replace(/[^0-9]/g, '');
         return jid && jid + from.sender === cht.sender;
-      }) || is.me;
-    is.coowner = global.coowner.some((a) => {
-      const jid = String(a)
-        ?.split('@')[0]
-        ?.replace(/[^0-9]/g, '');
-      return jid && jid + from.sender === cht.sender;
-    });
+      }) ||
+      is.me ||
+      isJadibotOwner;
+
+    is.coowner =
+      global.coowner.some((a) => {
+        const jid = String(a)
+          ?.split('@')[0]
+          ?.replace(/[^0-9]/g, '');
+        return jid && jid + from.sender === cht.sender;
+      }) || isJadibotCoOwner;
     is.group = cht.id?.endsWith(from.group);
-    const groupDb = is.group ? Data.preferences[cht.id] : {};
+    const groupDb = is.group ? preferences[cht.id] : {};
     if (is.group) {
       const groupMetadata = await Exp.groupMetadata(cht.id);
       Exp.groupMetdata = groupMetadata;
@@ -237,7 +391,9 @@ export default async function utils({ Exp, cht, is, store }) {
 
     let url = cht?.msg ? func.parseLink(cht?.msg) : [];
 
-    is.baileys = /^(3EB|BAE5|BELL409|Laurine|B1E)/.test(cht.key.id);
+    is.baileys =
+      /^(3EB|BAE5|BELL409|Laurine|B1E)/.test(cht.key.id) &&
+      !(is.owner || is.coowner);
     is.botMention = cht?.mention?.includes(Exp.number);
     is.cmd = cht.cmd;
     is.sticker = cht.type === 'sticker';
@@ -408,6 +564,25 @@ export default async function utils({ Exp, cht, is, store }) {
       !is.coowner &&
       !is.me;
 
+    if (
+      groupDb?.antispam &&
+      is.group &&
+      !is.me &&
+      !is.owner &&
+      !is.coowner &&
+      !is.groupAdmins
+    ) {
+      Data.antispam ??= {};
+      Data.antispam[cht.id] ??= {};
+      const now = Date.now();
+      const spamUser = Data.antispam[cht.id][cht.sender];
+      if (!spamUser || now - spamUser.time > 10000) {
+        Data.antispam[cht.id][cht.sender] = { count: 1, time: now };
+      } else {
+        spamUser.count++;
+      }
+    }
+
     is.spam =
       groupDb?.antispam &&
       !is.me &&
@@ -416,11 +591,14 @@ export default async function utils({ Exp, cht, is, store }) {
       !is.groupAdmins &&
       is.group &&
       Data.antispam?.[cht.id]?.[cht.sender] &&
-      Data.antispam[cht.id][cht.sender].count > 6 &&
+      Data.antispam[cht.id][cht.sender].count >= 5 &&
       Date.now() - Data.antispam[cht.id][cht.sender].time <= 10000;
     cht.reply = async function (text, etc = {}, quoted = { quoted: true }) {
       try {
-        // kalo cfg.replyAi = true bakal ngubah balasan pake AI
+        if (typeof text === 'object' && text !== null && text.body) {
+          etc = { footer: text.footer, ...etc };
+          text = text.body;
+        }
         let finalText =
           typeof cfg.font == 'string' && cfg.font !== 'normal'
             ? text.font(cfg.font)
@@ -467,11 +645,15 @@ Balasan akhir (teks yang sudah diubah sesuai profil):`;
             : cht;
         }
 
-        const { key } = await Exp.sendMessage(
-          cht.id,
-          { text: finalText, ...etc },
-          quoted
-        );
+        let msgContent =
+          etc.image || etc.video || etc.document || etc.audio || etc.sticker
+            ? { caption: etc.caption || finalText, ...etc }
+            : { text: finalText, ...etc };
+        if (msgContent.image || msgContent.video || msgContent.document) {
+          delete msgContent.text;
+        }
+
+        const { key } = await Exp.sendMessage(cht.id, msgContent, quoted);
         keys[cht.sender] = key;
         return { key };
       } catch (e) {
@@ -495,6 +677,7 @@ Balasan akhir (teks yang sudah diubah sesuai profil):`;
 
     cht.edit = async function (text, key, force) {
       if (!('editmsg' in cfg)) cfg.editmsg = true;
+      if (!key && !force) return;
       let msg = { text: text || '...' };
       if (cfg.editmsg || force) msg.edit = key;
       try {
@@ -539,7 +722,7 @@ Balasan akhir (teks yang sudah diubah sesuai profil):`;
         );
         groupDb.warn[jid][t].value++;
       }
-      Data.preferences[cht.id] = groupDb;
+      preferences[cht.id] = groupDb;
     };
     cht.question = async (
       text,
@@ -551,6 +734,7 @@ Balasan akhir (teks yang sudah diubah sesuai profil):`;
         let qcmds =
           memories.getItem(sender || cht.sender, 'quotedQuestionCmd') || {};
         qcmds[key.id] = {
+          key: { id: key.id },
           emit: emit || `${cht.cmd}`,
           exp: exp || Date.now() + 60000,
           Keys,

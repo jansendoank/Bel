@@ -110,7 +110,7 @@ export default class EventEmitter {
     }
   }
 
-  sendPremiumMsg(trial = true, trialAvailable = true) {
+  sendPremiumMsg(trial = false, trialAvailable = true) {
     this.ensure();
     const imageMessage = {
       text: messages.onlyPremium(trial, trialAvailable),
@@ -266,6 +266,13 @@ export default class EventEmitter {
             !ev.onlyGame.includes(metadata.game?.type),
           message: Data.infos.events.onlyGame(metadata, ev),
         },
+        {
+          condition: ev.isRich && !cfg.rich,
+          message:
+            typeof ev.isRich === 'string'
+              ? ev.isRich
+              : Data.infos.owner.richDisabled,
+        },
       ];
 
       for (const { condition, message } of checks) {
@@ -283,7 +290,7 @@ export default class EventEmitter {
           return cht.reply(messages.isNotAvailableOnTrial);
       }
 
-      if (ev.energy && !isNaN(ev.energy) && cht.memories.energy < ev.energy) {
+      if (!ev.continue && ev.energy && !isNaN(ev.energy) && cht.memories.energy < ev.energy) {
         return cht.reply(
           messages.isEnergy({
             uEnergy: cht.memories.energy,
@@ -459,11 +466,59 @@ export default class EventEmitter {
                 */
       }
 
-      if (ev.energy && ('energy_mode' in cfg ? cfg.energy_mode : true)) {
-        await ArchiveMemories.reduceEnergy(cht.sender, ev.energy);
-        await cht.reply(`-${ev.energy} Energy⚡`, { replyAi: false });
-      } else {
-        ev.energy && (await cht.reply(`⏱️Wait...`, { replyAi: false }));
+      const isAudioEvent =
+        ev.tag === 'tts' ||
+        (Array.isArray(ev.type) && ev.type.includes('audio')) ||
+        cht.cmd === 'play' ||
+        cht.cmd === 'playvn' ||
+        (Array.isArray(ev.cmd) &&
+          (ev.cmd.includes('play') || ev.cmd.includes('playvn')));
+
+      const isReactionAudio =
+        Boolean(this.is?.reaction || cht?.reaction) && isAudioEvent;
+
+      const isSilent = Boolean(opts?.silent || isReactionAudio);
+
+      let continueFunc = async (customEnergy) => {
+        let cost = !isNaN(customEnergy) ? customEnergy : ev.energy;
+        if (cost && !isNaN(cost) && ('energy_mode' in cfg ? cfg.energy_mode : true)) {
+          let currentEnergy = cht.memories.energy;
+          if (currentEnergy < cost) {
+            await cht.reply(
+              messages.isEnergy({
+                uEnergy: currentEnergy,
+                energy: cost,
+                charging: cht.memories.charging,
+              })
+            );
+            return false;
+          }
+          await ArchiveMemories.reduceEnergy(cht.sender, cost);
+          if (!isSilent) {
+            await cht.reply(`-${cost} Energy⚡`, {
+              replyAi: false,
+              ...(isAudioEvent ? { footer: 'Supported by termai.cc' } : {}),
+            });
+          }
+          return true;
+        }
+        return true;
+      };
+
+      if (!ev.continue) {
+        if (ev.energy && ('energy_mode' in cfg ? cfg.energy_mode : true)) {
+          await ArchiveMemories.reduceEnergy(cht.sender, ev.energy);
+          if (!isSilent) {
+            await cht.reply(`-${ev.energy} Energy⚡`, {
+              replyAi: false,
+              ...(isAudioEvent ? { footer: 'Supported by termai.cc' } : {}),
+            });
+          }
+        } else {
+          if (!isSilent) {
+            ev.energy && (await cht.reply(`⏱️Wait...`, { replyAi: false }));
+          }
+        }
       }
 
       const resolves = {
@@ -471,6 +526,7 @@ export default class EventEmitter {
         urls,
         args,
         cht,
+        continue: continueFunc,
         argsText:
           typeof ev.args == 'string'
             ? ev.args
@@ -487,6 +543,27 @@ export default class EventEmitter {
         `${bgcolor('[ERROR]', 'red')} ${timestamp()}\n- Error emitting "${event}"`,
         error.stack
       );
+      try {
+        let cht = opts?.cht || this.cht;
+        let sender = cht?.sender;
+        let isApiErr =
+          error?.name === 'TermaiApiError' ||
+          error?.apiError ||
+          String(error?.stack || error?.message).includes('TermaiApiError');
+        if (isApiErr) {
+          let errMsg = messages.termaiApiError(error, event);
+          let _key = global.keys?.[sender];
+          if (_key && cht.edit) {
+            try {
+              await cht.edit(errMsg, _key, true);
+            } catch (e) {
+              await cht.reply(errMsg);
+            }
+          } else {
+            await cht.reply(errMsg);
+          }
+        }
+      } catch (errSend) {}
       return;
     }
   }

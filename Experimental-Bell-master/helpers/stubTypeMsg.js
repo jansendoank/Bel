@@ -1,13 +1,18 @@
 const { WAMessageStubType: StubType } = 'baileys'.import();
 let infos = Data.infos;
 
-export default async function stubTypeMsg({ Exp, cht, sewaDb }) {
+export default async function stubTypeMsg({ Exp, cht, sewaDb, is }) {
   try {
     //console.log({ sewaDb, id: cht.id, sewadb2: Data.sewa[cht.id] }, JSON.stringify(Data.sewa,0,2))
+    if (!cht?.id || !cht.id.endsWith('@g.us')) return;
+    const preferences = is?.jadibot
+      ? ((Data.preferencesBot ??= {})[Exp.user.id.split(':')[0]] ??= {})
+      : (Data.preferences ??= {});
     let { func } = Exp,
-      chatDb = Data.preferences[cht.id],
+      chatDb = (preferences[cht.id] ??= {}),
       { wtype, ltype } = chatDb;
-    const group = await func.getGroupMetadata(cht.id);
+    const group = await func.getGroupMetadata(cht.id).catch(() => null);
+    if (!group) return;
 
     //console.log({ group })
     const getSenders = async (cht) =>
@@ -70,7 +75,7 @@ export default async function stubTypeMsg({ Exp, cht, sewaDb }) {
           `${func.color.white('Event:')} ${func.color.cyan(stubName)}`
       );
 
-      return await func.getGroupMetadata(cht.id, true);
+      return await func.getGroupMetadata(cht.id, true).catch(() => null);
     };
     //console.log({ genText: genText(wtype, members, group.subject, group.desc, 'welcome') })
     let stubType =
@@ -80,8 +85,8 @@ export default async function stubTypeMsg({ Exp, cht, sewaDb }) {
     switch (stubType) {
       case StubType.GROUP_PARTICIPANT_ADD:
       case StubType.GROUP_PARTICIPANT_ADD_REQUEST_JOIN: {
-        await func.getGroupMetadata(cht.id, true);
-        if (!Data.preferences[cht.id]?.welcome) return;
+        await func.getGroupMetadata(cht.id, true).catch(() => null);
+        if (!preferences[cht.id]?.welcome) return;
         let text = genText(
           wtype,
           members,
@@ -106,7 +111,7 @@ export default async function stubTypeMsg({ Exp, cht, sewaDb }) {
             forwardingScore: 19,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363301254798220@newsletter',
+              newsletterJid: '120363205560908891@newsletter',
               serverMessageId: 152,
             },
           },
@@ -174,13 +179,8 @@ export default async function stubTypeMsg({ Exp, cht, sewaDb }) {
       case StubType.GROUP_PARTICIPANT_REMOVE:
       case StubType.GROUP_PARTICIPANT_LEAVE: {
         func.getGroupMetadata(cht.id, true);
-        if (_members.includes(Exp.number))
-          return delete Data.preferences[cht.id];
-        if (
-          'leave' in chatDb
-            ? !chatDb?.leave
-            : !Data.preferences[cht.id]?.welcome
-        )
+        if (_members.includes(Exp.number)) return delete preferences[cht.id];
+        if ('leave' in chatDb ? !chatDb?.leave : !preferences[cht.id]?.welcome)
           return;
         let text = genText(ltype, members, group.subject, group.desc, 'leave');
         ltype ||= 'linkpreview';
@@ -201,7 +201,7 @@ export default async function stubTypeMsg({ Exp, cht, sewaDb }) {
             forwardingScore: 19,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363301254798220@newsletter',
+              newsletterJid: '120363205560908891@newsletter',
               serverMessageId: 152,
             },
           },

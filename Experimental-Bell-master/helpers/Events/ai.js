@@ -1,6 +1,7 @@
 /*!-======[ Module Imports ]======-!*/
 const axios = 'axios'.import();
 const fs = 'fs'.import();
+const { generateMessageIDV2 } = 'baileys'.import();
 
 /*!-======[ Functions Imports ]======-!*/
 const { gpt } = await (fol[2] + 'gpt3.js').r();
@@ -9,6 +10,7 @@ const { GeminiImage } = await (fol[2] + 'gemini.js').r();
 const { imageEdit } = await (fol[2] + 'imageEdit.js').r();
 const { tmpFiles } = await (fol[0] + 'tmpfiles.js').r();
 const { TermaiCdn } = await (fol[0] + 'cdn.termai.js').r();
+const { extractLastFrame, concatVideos } = await (fol[0] + 'ffmpeg.js').r();
 
 let exif = await (fol[0] + 'exif.js').r();
 let { convert } = exif;
@@ -18,6 +20,10 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
   let infos = Data.infos;
   let { sender, id } = cht;
   const { func } = Exp;
+  let { archiveMemories: memories } = func;
+  const preferences = is?.jadibot
+    ? ((Data.preferencesBot ??= {})[Exp.user.id.split(':')[0]] ??= {})
+    : (Data.preferences ??= {});
   ev.on(
     {
       cmd: ['cover', 'covers'],
@@ -150,12 +156,13 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
       tag: 'art',
       premium: true,
       energy: 50,
+      continue: true,
       media: {
         type: ['image'],
         save: false,
       },
     },
-    async ({ media }) => {
+    async ({ media, continue: _continue }) => {
       const _key = keys[sender];
       let tryng = 0;
       let type = 'anime2d';
@@ -167,6 +174,8 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
       } else if (['imglarger', 'enlarger', 'enlarge'].includes(cht.cmd)) {
         type = 'enlarger';
       }
+      let ok = await _continue();
+      if (!ok) return;
       let i = 0;
       await cht.edit(infos.messages.wait, _key, true);
       let tph = await TermaiCdn(await func.minimizeImage(media));
@@ -182,13 +191,26 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
         ).then((a) => a.json());
         console.log(ai);
         if (!ai.status) return cht.reply(ai?.msg || 'Error!');
-        while (tryng < 50) {
+        while (tryng < 75) {
           if (i === Data.spinner.length) i = 0;
           let s = await fetch(
             api.xterm.url + '/api/img2img/filters/batchProgress?id=' + ai.id
           ).then((a) => a.json());
+          tryng++;
+          let progStr = s?.progress || 'Prepare...';
+          let progMatch = String(progStr).match(/(\d+(?:\.\d+)?)\s*%/);
+          let progBarText = '';
+          if (progMatch) {
+            let p = parseFloat(progMatch[1]);
+            progBarText = `\n> \`[${func.progressBar(p)}] ${p}%\``;
+            progStr = progStr.replace(progMatch[0], '').trim();
+          } else if (!isNaN(parseFloat(progStr)) && isFinite(progStr)) {
+            let p = parseFloat(progStr);
+            progBarText = `\n> \`[${func.progressBar(p)}] ${p}%\``;
+            progStr = '';
+          }
           await cht.edit(
-            `${Data.spinner[i++]} ${s?.progress || 'Prepare...'}`,
+            `${Data.spinner[i++]} ${progStr || 'Processing....'}${progBarText}`,
             _key,
             true
           );
@@ -221,8 +243,9 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
       tag: 'stablediffusion',
       args: (isI2i ? infos.messages.replyOrSendImage : '') + infos.ai.txt2img,
       energy: 100,
+      continue: true,
     },
-    async () => {
+    async ({ continue: _continue }) => {
       const _key = keys[sender];
       const img =
         is.quoted.image ||
@@ -283,6 +306,10 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
           return cht.reply(
             `*Please input checkpoints & prompt!*\n\n${infos.ai.txt2img}`
           );
+
+        let ok = await _continue();
+        if (!ok) return;
+
         await cht.edit(infos.messages.wait, _key, true);
 
         let [checkpointsResponse, lorasResponse] = await Promise.all([
@@ -389,7 +416,7 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
 
         let tryng = 0;
         let i = 0;
-        while (tryng < 50) {
+        while (tryng < 80) {
           tryng += 1;
 
           let sResponse = await fetch(
@@ -411,8 +438,9 @@ export default async function on({ Exp, ev, store, cht, ai, is }) {
               true
             );
           } else if (s.taskStatus === 1) {
+            let p = parseFloat(s.progress) || 0;
             await cht.edit(
-              `${Data.spinner[i++]} Processing.... ${s.progress}%`,
+              `${Data.spinner[i++]} Processing....\n> \`[${func.progressBar(p)}] ${s.progress}%\``,
               _key,
               true
             );
@@ -473,9 +501,12 @@ ${loraText}
       listmenu: ['lorasearch', 'checkpointsearch'],
       tag: 'stablediffusion',
       energy: 3,
+      continue: true,
     },
-    async () => {
+    async ({ continue: _continue }) => {
       if (!cht.q) return cht.reply('Mau cari model apa?');
+      let ok = await _continue();
+      if (!ok) return;
       fetch(
         `${api.xterm.url}/api/text2img/stablediffusion/list_${cht.cmd == 'lorasearch' ? 'loras' : 'checkpoints'}?key=${api.xterm.key}`
       ).then(async (a) => {
@@ -509,10 +540,13 @@ ${loraText}
       listmenu: ['getlora', 'getcheckpoint'],
       tag: 'stablediffusion',
       energy: 3,
+      continue: true,
     },
-    async () => {
+    async ({ continue: _continue }) => {
       if (!cht.q) return cht.reply('Harap masukan id nya!');
       if (isNaN(cht.q)) return cht.reply('Id harus berupa angka!');
+      let ok = await _continue();
+      if (!ok) return;
       fetch(
         `${api.xterm.url}/api/text2img/stablediffusion/list_${cht.cmd == 'getlora' ? 'loras' : 'checkpoints'}?key=${api.xterm.key}`
       ).then(async (a) => {
@@ -542,21 +576,131 @@ ${loraText}
       energy: 185,
       premium: true,
       media: {
-        type: ['image'],
+        type: ['image', 'video'],
       },
     },
     async ({ media }) => {
       const _key = keys[sender];
-      const response = await axios.post(
-        `${api.xterm.url}/api/img2video/luma?key=${api.xterm.key}${cht?.q ? '&prompt=' + cht.q : ''}`,
-        await func.minimizeImage(media),
-        {
-          headers: {
-            'Content-Type': 'application/octet-stream',
-          },
-          responseType: 'stream',
-        }
+      const isRich = false;
+      let richMsgId = isRich ? generateMessageIDV2() : null;
+      let thumbMedia = null;
+
+      let prevVideo = null;
+      let inputImage = media;
+
+      let isVideo = Boolean(
+        cht?.quoted?.video ||
+        cht?.video ||
+        (media?.length > 8 && media.slice(4, 8).toString() === 'ftyp') ||
+        (media?.indexOf(Buffer.from('ftyp')) >= 0 && media.indexOf(Buffer.from('ftyp')) < 30)
       );
+
+      if (isVideo) {
+        prevVideo = media;
+        try {
+          inputImage = await extractLastFrame(media);
+        } catch (e) {
+          return cht.reply('Gagal mengambil frame terakhir dari video!');
+        }
+      }
+
+      if (isRich) {
+        thumbMedia = await func
+          .minimizeImage(inputImage, { width: 300, quality: 70 })
+          .catch(() => null);
+        await Exp.relayMessage(
+          cht.id,
+          {
+            messageContextInfo: {
+              messageSecret: '0hDCiRfrZHYooUocY7vooWJ8kSQLMJxjSSZqq4QyyWQ=',
+              botMetadata: {
+                verificationMetadata: {
+                  proofs: [
+                    {
+                      version: 1,
+                      useCase: 'WA_BOT_MSG',
+                      signature:
+                        'fNXsmJTAJGKerAJMwVOiYIbB1c/A2hVXUOPyRUvNu+0W8F1NUvnibUbnem2OismriiyvLmLmGAlXhlCksxqGCA==',
+                      certificateChain: [
+                        'MIICqTCCAk6gAwIBAgIUaxPH0fsyZiMDN5A8Wd0yrpLmqjMwCgYIKoZIzj0EAwIweTEiMCAGA1UEAwwZTWV0YSBXQSBTUyBJbnQgQ0EgMjAyNS0wOTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExEzARBgNVBAcMCk1lbmxvIFBhcmsxHDAaBgNVBAoME01ldGEgUGxhdGZvcm1zIEluYy4wHhcNMjYwODI3MTgzMTU3WhcNMjcwMzE1MTgzMjA3WjAeMRwwGgYDVQQDDBNzdmM6d2EtYm90LW1zZy1sZWFmMCowBQYDK2VwAyEAqdut5Tx9yWzW6vvz7oYsRtpuOdoTXIm5KsU0nVELWiijggE8MIIBODALBgNVHQ8EBAMCB4AwHQYDVR0OBBYEFAnL8t65S5IJ7KhhcL28bbYsPC6XMIG0BgNVHSMEgawwgamAFO81YRGUWbuc0xuufO+lFiYAOjGOoXukeTB3MSAwHgYDVQQDDBdNZXRhIFdBIEZlYXR1cmUgUm9vdCBDQTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExEzARBgNVBAcMCk1lbmxvIFBhcmsxHDAaBgNVBAoME01ldGEgUGxhdGZvcm1zIEluYy6CFEZvL5Zv8AJ8duOmVC+Foy7F4yg7MFMGCysGAQQBgsAVAgIQBEQMQlVSSTptcmw6Ly9jZXJ0aWZpY2F0ZV9zZXJ2aWNlLndoYXRzYXBwX3NpbXBsZV9zaWduYWwvU2VyaWFsTnVtYmVyczAKBggqhkjOPQQDAgNJADBGAiEAtF9K6ACFItXj8f8JuNEKKM8+rB2V5xJZinXFM2VRjKECIQD7sFe9r0N2WZV4i+H0+7TXvXJzGh165X0nJNNX/Ls7xA==',
+                        'MIIDeDCCAx2gAwIBAgIURm8vlm/wAnx246ZUL4WjLsXjKDswCgYIKoZIzj0EAwIwdzEgMB4GA1UEAwwXTWV0YSBXQSBGZWF0dXJlIFJvb3QgQ0ExCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRMwEQYDVQQHDApNZW5sbyBQYXJrMRwwGgYDVQQKDBNNZXRhIFBsYXRmb3JtcyBJbmMuMB4XDTI1MDkwNDE4MDU0OVoXDTI3MDkwNDE4MDU0OVoweTEiMCAGA1UEAwwZTWV0YSBXQSBTUyBJbnQgQ0EgMjAyNS0wOTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExEzARBgNVBAcMCk1lbmxvIFBhcmsxHDAaBgNVBAoME01ldGEgUGxhdGZvcm1zIEluYy4wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATs+c+UVhvMBZzu4AHndKKTZASPLp2vUt1g84aUpdOFqmqCs5KEJ8Sxhi8F9GX4P7rPLjfOwfFJRA6yrp+2cX0zo4IBgzCCAX8wHQYDVR0OBBYEFO81YRGUWbuc0xuufO+lFiYAOjGOMIG0BgNVHSMEgawwgamAFNO7KMTVSYUxkL6VS3LyWJw7m76zoXukeTB3MSAwHgYDVQQDDBdNZXRhIFdBIEZlYXR1cmUgUm9vdCBDQTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExEzARBgNVBAcMCk1lbmxvIFBhcmsxHDAaBgNVBAoME01ldGEgUGxhdGZvcm1zIEluYy6CFALbuULsZlYXxk/Cz5I35uNJkpdAMA4GA1UdDwEB/wQEAwIBhjASBgNVHRMBAf8ECDAGAQH/AgEAMEUGA1UdHwQ+MDwwOqA4oDaGNGh0dHBzOi8vbWV0YS5wdWJsaWNrZXlpbmZyYS5jb20vYXJsL3doYXRzYXBwX2ZlYXR1cmUwIAYIKwYBBQUHAQEEFDASMBAGCCsGAQUFBzABhgROb25lMBoGCWCGSAGG+EIBDQQNFgtPbmNhbGw6IHBraTAKBggqhkjOPQQDAgNJADBGAiEAq7Ycf2W/cSA2Ni3L0sgYmPmlRxkPcMgOm+ZRgkiQsdwCIQD2XRUvySFSRYJSfyQW2m4ka8N9gJ8KRMD1KTwyXghXHQ==',
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            botForwardedMessage: {
+              message: {
+                richResponseMessage: {
+                  messageType: 'AI_RICH_RESPONSE_TYPE_STANDARD',
+                  unifiedResponse: {
+                    data: {
+                      response_id: ''.uuid(),
+                      sections: [
+                        {
+                          view_model: {
+                            primitive: {
+                              media: {
+                                url: '',
+                                mime_type: 'video/mp4',
+                              },
+                              imagine_type: 'ANIMATE',
+                              status: {
+                                status: 'GENERATING',
+                                estimated_completion_time:
+                                  Math.floor(Date.now() / 1000) + 90,
+                              },
+                              ...(thumbMedia
+                                ? {
+                                    thumbnail: {
+                                      raw_media: thumbMedia.toString('base64'),
+                                    },
+                                  }
+                                : {}),
+                              __typename: 'GenAIImaginePrimitive',
+                            },
+                            __typename: 'GenAISingleLayoutViewModel',
+                          },
+                        },
+                      ],
+                    },
+                  },
+                  contextInfo: {
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedAiBotMessageInfo: {
+                      botJid: '867051314767696@bot',
+                    },
+                    forwardOrigin: 'META_AI',
+                    botMessageSharingInfo: {
+                      botEntryPointOrigin: 'AI_TAB',
+                      forwardScore: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          { messageId: richMsgId }
+        );
+      }
+
+      let response;
+      try {
+        response = await axios.post(
+          `${api.xterm.url}/api/img2video/luma?key=${api.xterm.key}${cht?.q ? '&prompt=' + encodeURIComponent(cht.q) : ''}`,
+          await func.minimizeImage(inputImage),
+          {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+            },
+            responseType: 'stream',
+          }
+        );
+      } catch (err) {
+        return cht.reply(err.response?.data?.msg || err.message || 'Error!!');
+      }
 
       let rsp = 'rfz';
       let i = 0;
@@ -578,27 +722,148 @@ ${loraText}
               case 'queueing':
               case 'generating':
               case 'processing':
-                cht.edit(
-                  `${Data.spinner[i++]} ${data.msg || 'Processing....'} ${data.progress ? data.progress + '%' : ''}`,
-                  _key,
-                  true
-                );
+                if (!isRich) {
+                  let barText = data.progress
+                    ? `\n> \`[${func.progressBar(data.progress)}] ${data.progress}%\``
+                    : '';
+                  cht.edit(
+                    `${Data.spinner[i++]} ${data.msg || 'Processing....'}${barText}`,
+                    _key,
+                    true
+                  );
+                }
                 break;
               case 'failed':
                 await cht.reply(data.msg);
                 response.data.destroy();
                 break;
               case 'completed':
-                await Exp.sendMessage(
-                  id,
-                  {
-                    video: { url: data.video.url },
-                    mimetype: 'video/mp4',
-                    ai: true,
-                  },
-                  { quoted: cht }
-                );
-                response.data.destroy();
+              case 'success':
+                {
+                  const videoUrl =
+                    data.video?.url || data.video || data.url || data.result;
+                  if (!videoUrl) break;
+
+                  let finalVideo = { url: videoUrl };
+                  if (prevVideo) {
+                    if (!isRich) {
+                      await cht.edit('Menggabungkan video...', _key, true);
+                    }
+                    try {
+                      let newVideoRes = await axios.get(videoUrl, { responseType: 'arraybuffer' });
+                      let newVideoBuf = Buffer.from(newVideoRes.data);
+                      finalVideo = await concatVideos([prevVideo, newVideoBuf]);
+                    } catch (errConcat) {
+                      console.error('Concat error:', errConcat);
+                      finalVideo = { url: videoUrl };
+                    }
+                  }
+
+                  if (isRich && richMsgId) {
+                    await Exp.relayMessage(
+                      cht.id,
+                      {
+                        messageContextInfo: {
+                          messageSecret:
+                            'm6bGVZ4pD6N3FHmdRYXSVBnNsPEteK92182fvdlDwck=',
+                        },
+                        botForwardedMessage: {
+                          message: {
+                            protocolMessage: {
+                              key: {
+                                remoteJid: cht.id,
+                                fromMe: true,
+                                id: richMsgId,
+                              },
+                              type: 14,
+                              editedMessage: {
+                                richResponseMessage: {
+                                  messageType: 'AI_RICH_RESPONSE_TYPE_STANDARD',
+                                  unifiedResponse: {
+                                    data: {
+                                      response_id: ''.uuid(),
+                                      sections: [
+                                        {
+                                          view_model: {
+                                            primitive: {
+                                              media: {
+                                                url: videoUrl,
+                                                mime_type: 'video/mp4',
+                                                width: 720,
+                                                height: 1280,
+                                                file_length: 4260175,
+                                                duration: 6,
+                                              },
+                                              imagine_type: 'ANIMATE',
+                                              status: {
+                                                status: 'READY',
+                                              },
+                                              ...(thumbMedia
+                                                ? {
+                                                    thumbnail: {
+                                                      raw_media:
+                                                        thumbMedia.toString(
+                                                          'base64'
+                                                        ),
+                                                    },
+                                                  }
+                                                : {}),
+                                              __typename:
+                                                'GenAIImaginePrimitive',
+                                            },
+                                            __typename:
+                                              'GenAISingleLayoutViewModel',
+                                          },
+                                        },
+                                      ],
+                                    },
+                                  },
+                                  contextInfo: {
+                                    forwardingScore: 1,
+                                    isForwarded: true,
+                                    forwardedAiBotMessageInfo: {
+                                      botJid: '867051314767696@bot',
+                                    },
+                                    forwardOrigin: 'META_AI',
+                                    botMessageSharingInfo: {
+                                      botEntryPointOrigin: 'AI_TAB',
+                                      forwardScore: 1,
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                      {}
+                    );
+                  } else {
+                    let sentMsg = await Exp.sendMessage(
+                      id,
+                      {
+                        video: finalVideo,
+                        mimetype: 'video/mp4',
+                        footer: '- Balas video ini dengan prompt untuk melanjutkan video!',
+                        ai: true,
+                      },
+                      { quoted: cht }
+                    );
+
+                    if (sentMsg?.key?.id) {
+                      let qCmds = memories.getItem(sender, 'quotedQuestionCmd') || {};
+                      qCmds[sentMsg.key.id] = {
+                        key: { id: sentMsg.key.id },
+                        emit: 'luma',
+                        exp: Date.now() + func.parseTimeString('10 menit'),
+                        maxUse: 10,
+                        accepts: [],
+                      };
+                      memories.setItem(sender, 'quotedQuestionCmd', qCmds);
+                    }
+                  }
+                  response.data.destroy();
+                }
                 break;
               case 'reject':
                 cht.reply(data.msg);
@@ -619,6 +884,185 @@ ${loraText}
 
   ev.on(
     {
+      cmd: ['enhancevideo', 'hdvideo', 'hdvid', 'ehv', 'wink', 'repairvideo', 'rpv'],
+      listmenu: ['enhancevideo', 'repairvideo', 'hdvid'],
+      tag: 'ai',
+      energy: 185,
+      continue: true,
+      premium: true,
+      media: {
+        type: ['video'],
+        etc: {
+          seconds: 20,
+        },
+      },
+    },
+    async ({ media, continue: _continue }) => {
+      const _key = keys[sender];
+
+      if (cht.cmd === 'wink' && !cht.q) {
+        return cht.reply(
+          `[ 🤖 WINK VIDEO PROCESSOR ]\n\n` +
+            `Gunakan perintah: *${prefix}wink [opsi]* sambil melampirkan video.\n\n` +
+            `*Pilihan Opsi yang Tersedia:*\n` +
+            `• *uhd* : New AI UHD (Resolusi UHD detail maksimal - Maks 10 detik)\n` +
+            `• *4k* / *hdvid* : 4K Ultra HD (Kualitas detail standard - Maks 60 detik)\n` +
+            `• *2k* : Ultra HD 2K (Resolusi 2K tajam)\n` +
+            `• *hd* : Standard HD (Peningkatan cepat)\n` +
+            `• *repair* : AI Repair Pro (Memperbaiki video buram/rusak)\n` +
+            `• *portrait* : Portrait (Fokus memperjelas wajah)\n` +
+            `• *cartoon* : Gaya Animasi/Kartun 2D\n` +
+            `• *denoise* : Mengurangi noise/bintik semut\n` +
+            `• *deblur* : Mengurangi blur akibat goyangan kamera\n` +
+            `• *smooth* : Meningkatkan kehalusan gerakan (FPS)\n` +
+            `• *color* : Koreksi warna kontras otomatis\n\n` +
+            `*Contoh*: Balas video dengan mengetik *${prefix}wink uhd*`
+        );
+      }
+      let ok = await _continue();
+      if (!ok) return;
+
+      let taskParam = '';
+      let modelParam = '';
+
+      const opt = (cht.q || '').toLowerCase().trim();
+      const cmdName = cht.cmd.toLowerCase();
+
+      if (cmdName === 'repairvideo' || cmdName === 'rpv' || opt === 'repair') {
+        taskParam = 'VIDEO_REPAIR';
+        modelParam = '65591';
+      } else if (opt === 'uhd') {
+        taskParam = 'VIDEO_UHD';
+        modelParam = '63031';
+      } else if (cmdName === 'hdvid' || cmdName === 'hdvideo' || opt === '4k' || opt === 'hdvid' || opt === 'ai_uhd') {
+        taskParam = 'VIDEO_HD';
+        modelParam = '63093';
+      } else if (opt === '2k' || opt === 'ultra_hd') {
+        taskParam = 'VIDEO_HD';
+        modelParam = '63091';
+      } else if (opt === 'portrait') {
+        taskParam = 'VIDEO_HD';
+        modelParam = '63092';
+      } else if (opt === 'cartoon' || opt === 'anime') {
+        taskParam = 'VIDEO_HD';
+        modelParam = '63097';
+      } else if (opt === 'hd') {
+        taskParam = 'VIDEO_HD';
+        modelParam = '63090';
+      } else if (opt === 'denoise') {
+        taskParam = 'DENOISE';
+        modelParam = '63292';
+      } else if (opt === 'deblur') {
+        taskParam = 'DEBLUR';
+        modelParam = '67691';
+      } else if (opt === 'smooth' || opt === 'fps') {
+        taskParam = 'FRAME_INTERPOLATION';
+        modelParam = '62091';
+      } else if (opt === 'color') {
+        taskParam = 'COLOR_CORRECTION';
+        modelParam = '64990';
+      }
+
+      const response = await axios.post(
+        `${api.xterm.url}/api/tools/video-enhancer?key=${api.xterm.key}${taskParam ? '&task=' + taskParam : ''}${modelParam ? '&model=' + modelParam : ''}`,
+        media,
+        {
+          headers: {
+            'Content-Type': 'application/octet-stream',
+          },
+          responseType: 'stream',
+        }
+      );
+
+      let i = 0;
+      let streamDone = false;
+      response.data.on('data', async (chunk) => {
+        if (streamDone) return;
+        try {
+          const eventString = chunk.toString();
+          const eventData = eventString.match(/data: (.+)/);
+          if (eventData && eventData[1]) {
+            let data;
+            try {
+              data = JSON.parse(eventData[1]);
+            } catch (e) {
+              data = {};
+            }
+            console.log(data);
+            if (i === Data.spinner.length) i = 0;
+            switch (data.status) {
+              case 'preparing':
+              case 'uploading':
+              case 'processing':
+              case 'enhancing':
+                try {
+                  await cht.edit(
+                    `${Data.spinner[i++]} ${data.msg || 'Processing....'}`,
+                    _key,
+                    true
+                  );
+                } catch (e) {}
+                break;
+              case 'failed':
+                streamDone = true;
+                try { await cht.reply(data.msg); } catch (e) {}
+                response.data.destroy();
+                break;
+              case 'completed':
+                streamDone = true;
+                let caption = `*Video Enhancer Sukses!*\n` +
+                  (data.beans ? `⚡ Penggunaan: *${data.beans} Beans*\n` : '') +
+                  (data.resolution ? `• Resolusi: *${data.resolution.toUpperCase()}*\n` : '') +
+                  (data.duration ? `• Durasi: *${data.duration} detik*` : '');
+                let videoUrl = data.video.url;
+                let fileSize = 0;
+                try {
+                  let headRes = await axios.head(videoUrl, { timeout: 10000 });
+                  fileSize = parseInt(headRes.headers['content-length'] || '0');
+                } catch (e) {}
+                if (fileSize > 80 * 1024 * 1024) {
+                  await Exp.sendMessage(
+                    id,
+                    {
+                      document: { url: videoUrl },
+                      mimetype: 'video/mp4',
+                      fileName: 'enhanced.mp4',
+                      caption: caption.trim(),
+                    },
+                    { quoted: cht }
+                  );
+                } else {
+                  await Exp.sendMessage(
+                    id,
+                    {
+                      video: { url: videoUrl },
+                      mimetype: 'video/mp4',
+                      caption: caption.trim(),
+                      ai: true,
+                    },
+                    { quoted: cht }
+                  );
+                }
+                response.data.destroy();
+                break;
+              case 'reject':
+                streamDone = true;
+                try { cht.reply(data.msg); } catch (e) {}
+                response.data.destroy();
+                break;
+              default:
+                console.log('Unknown status:', data);
+            }
+          }
+        } catch (e) {
+          console.error('Error processing chunk:', e.message);
+        }
+      });
+    }
+  );
+
+  ev.on(
+    {
       cmd: ['bard', 'ai'],
       tag: 'ai',
       args: infos.ai.isQuery,
@@ -630,7 +1074,11 @@ ${loraText}
         `${api.xterm.url}/api/chat/bard?query=${encodeURIComponent(cht.q)}&key=${api.xterm.key}`
       ).then((response) => response.json());
 
-      cht.reply('[ BARD GOOGLE ]\n' + ai.chatUi, { ai: true, replyAi: false });
+      cht.reply('[ BARD GOOGLE ]\n' + ai.chatUi, {
+        ai: true,
+        replyAi: false,
+        footer: String().wm(),
+      });
     }
   );
 
@@ -644,7 +1092,11 @@ ${loraText}
     },
     async () => {
       let res = await gpt(cht.q);
-      cht.reply('[ GPT-3 ]\n' + res.response, { ai: true, replyAi: false });
+      cht.reply('[ GPT-3 ]\n' + res.response, {
+        ai: true,
+        replyAi: false,
+        footer: String().wm(),
+      });
     }
   );
 
@@ -661,6 +1113,7 @@ ${loraText}
       cht.reply('[ DEEPSEEK-R1 ]\n' + res.response, {
         ai: true,
         replyAi: false,
+        footer: String().wm(),
       });
     }
   );
@@ -695,7 +1148,7 @@ ${loraText}
         );
       }
       if (!cht.q) return sendAiInfo();
-      Data.preferences[id] = Data.preferences[id] || {};
+      preferences[id] = preferences[id] || {};
       let q = cht.q;
       let set = {
         on: {
@@ -768,8 +1221,12 @@ ${loraText}
         },
       }[q];
 
-      let alls = Object.keys(Data.preferences);
+      let alls = Object.keys(preferences);
       if (!set) return sendAiInfo();
+      if (set.owner && (is?.jadibot || Exp?.isJadibot))
+        return cht.reply(
+          '🚫 Pengaturan AI global hanya dapat diubah melalui Bot Utama!'
+        );
       if (set.owner && !is.owner) return cht.reply(infos.messages.isOwner);
       if (id.endsWith(from.group) && !(is.groupAdmins || is.owner))
         return cht.reply(infos.messages.isAdmin);
@@ -794,14 +1251,14 @@ ${loraText}
               ? alls.filter((a) => a.endsWith(from.sender))
               : alls;
         for (let i of alls) {
-          Data.preferences[i].ai_interactive = set.value;
+          preferences[i].ai_interactive = set.value;
         }
       } else if (set.type == 'energy') {
         cfg.ai_interactive.energy = set.value;
       } else if (set.type == 'partResponse') {
         cfg.ai_interactive.partResponse = set.value;
       } else {
-        Data.preferences[id].ai_interactive = set.value;
+        preferences[id].ai_interactive = set.value;
       }
 
       cht.reply(set.done);
@@ -815,10 +1272,24 @@ ${loraText}
       listmenu: ['resetaichat'],
     },
     async () => {
-      let ai = await fetch(
-        `${api.xterm.url}/api/chat/logic-bell/reset?id=${cht.sender}&key=${api.xterm.key}`
-      ).then((response) => response.json());
-      cht.reply(ai.msg, { ai: true });
+      try {
+        let response = await fetch(
+          `${api.xterm.url}/api/chat/logic-bell/reset?id=${cht.sender}&key=${api.xterm.key}`
+        );
+        let ai = await response.json().catch(() => ({}));
+        let resMsg =
+          ai?.msg ||
+          ai?.message ||
+          '✅ Riwayat percakapan AI berhasil dibersihkan!';
+        if (resMsg.includes('id not found') || resMsg.includes('not found')) {
+          resMsg = 'ℹ️ Riwayat obrolan AI kamu belum ada atau sudah bersih.';
+        }
+        await cht.reply(resMsg, { ai: true });
+      } catch (e) {
+        await cht.reply(
+          'ℹ️ Riwayat obrolan AI kamu belum ada atau sudah bersih.'
+        );
+      }
     }
   );
 
@@ -916,6 +1387,96 @@ ${loraText}
         },
         { quoted: cht }
       );
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['bingimg', 'bingcreate'],
+      listmenu: ['bingimg'],
+      tag: 'art',
+      args: infos.ai.isPrompt,
+      energy: 20,
+      badword: true,
+    },
+    async ({ args }) => {
+      const _key = keys[sender];
+      await cht.edit(infos.messages.wait, _key, true);
+      try {
+        let res = await fetch(
+          `${api.xterm.url}/api/text2img/bing?prompt=${encodeURIComponent(args)}&key=${api.xterm.key}`
+        ).then((r) => r.json());
+        if (!res.status || !res.data?.length)
+          return cht.reply(infos.messages.failed);
+        for (let i = 0; i < res.data.length; i++) {
+          await Exp.sendMessage(
+            id,
+            {
+              image: { url: res.data[i] },
+              ai: true,
+            },
+            { quoted: cht }
+          );
+        }
+      } catch (e) {
+        cht.reply('Failed!: ' + e.message);
+      }
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['bingedit', 'bimg2img', 'img2bing'],
+      listmenu: ['bingedit'],
+      tag: 'ai',
+      energy: 25,
+      continue: true,
+      args: infos.ai.isPrompt,
+    },
+    async ({ continue: _continue }) => {
+      const img = is.quoted.image || is.image;
+      if (!img) return cht.reply(infos.messages.replyOrSendImage);
+      let ok = await _continue();
+      if (!ok) return;
+      let media = await (is.image ? cht.download() : cht.quoted.download());
+      const _key = keys[sender];
+      await cht.edit(infos.messages.wait, _key, true);
+      try {
+        if (is.sticker || is.quoted?.sticker) {
+          let url = await tmpFiles(media);
+          let cv = await convert({
+            url,
+            from: 'webp',
+            to: 'png',
+          });
+          media = await func.getBuffer(cv);
+        }
+        let res = await fetch(
+          `${api.xterm.url}/api/img2img/bing?key=${api.xterm.key}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: cht.q,
+              image: await func.minimizeImage(media),
+            }),
+          }
+        ).then((r) => r.json());
+        if (!res.status || !res.data?.length)
+          return cht.reply(infos.messages.failed);
+        for (let i = 0; i < res.data.length; i++) {
+          await Exp.sendMessage(
+            id,
+            {
+              image: { url: res.data[i] },
+              ai: true,
+            },
+            { quoted: cht }
+          );
+        }
+      } catch (e) {
+        cht.reply('Failed!: ' + e.message);
+      }
     }
   );
 
@@ -1047,7 +1608,7 @@ ${loraText}
                       forwardingScore: 999,
                       isForwarded: true,
                       forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363301254798220@newsletter',
+                        newsletterJid: '120363205560908891@newsletter',
                         serverMessageId: 152,
                       },
                     },
@@ -1091,6 +1652,7 @@ ${loraText}
       listmenu: ['faceswap'],
       tag: 'ai',
       energy: 25,
+      continue: true,
       premium: true,
       media: {
         type: ['image'],
@@ -1098,7 +1660,7 @@ ${loraText}
         save: false,
       },
     },
-    async ({ media }) => {
+    async ({ media, continue: _continue }) => {
       const _key = keys[sender];
       let face;
       let target;
@@ -1146,6 +1708,8 @@ ${loraText}
             ? await tmpFiles(await cht.download())
             : false;
       }
+      let ok = await _continue();
+      if (!ok) return;
       await cht.edit(infos.messages.wait, _key, true);
       axios({
         method: 'post',
@@ -1398,12 +1962,16 @@ ${loraText}
       listmenu: ['imageedit'],
       tag: 'ai',
       energy: 30,
+      continue: true,
       args: 'Please input prompt (English recommended)!',
-      media: {
-        type: ['image'],
-      },
     },
-    async ({ media }) => {
+    async ({ continue: _continue }) => {
+      const img = is.quoted.image || is.image;
+      if (!img)
+        return cht.reply('Harap kirim gambar atau reply gambar dengan prompt!');
+      let ok = await _continue();
+      if (!ok) return;
+      let media = await (is.image ? cht.download() : cht.quoted.download());
       try {
         if (is.sticker || is.quoted?.sticker) {
           let url = await tmpFiles(media);
@@ -1414,10 +1982,6 @@ ${loraText}
           });
           media = await func.getBuffer(cv);
         }
-        console.log({
-          react: JSON.stringify(cht.reaction),
-          cht: JSON.stringify(cht),
-        });
         Exp.sendMessage(
           id,
           {
@@ -1477,10 +2041,37 @@ ${loraText}
     ...['ungukan', 'unguin'].map((k) => [k, 'change skin color to purple']),
     ...['gelapkan', 'gelapin'].map((k) => [k, 'change skin color to dark']),
     ...['jadibiru'].map((k) => [k, 'change skin color to blue']),
+
+    ...['silverkan', 'silverin', 'manusiasilver'].map((k) => [
+      k,
+      'change skin color to metallic silver, reflective silver body paint texture, street performer style, highly detailed metallic sheen',
+    ]),
+    ...['emaskan', 'goldkan', 'manusiaemas'].map((k) => [
+      k,
+      'change skin color to shiny metallic gold, reflective gold paint, statuesque appearance, luxury gold texture',
+    ]),
+
     ...['ironman'].map((k) => [
       k,
       'edit the image into Iron Man suit, helmet open showing the original face, keep the face highly accurate and similar to the input photo, cinematic lighting, detailed metallic armor, glowing arc reactor on the chest, realistic Marvel movie style',
     ]),
+    ...['avatar', "na'vi", 'navikan'].map((k) => [
+      k,
+      "convert into Avatar Na'vi character, glowing neon blue skin with faint stripes, bioluminescent dots on face, yellow eyes, braided hair, Pandora jungle background",
+    ]),
+    ...['hulk', 'hulkkan', 'jadihulk'].map((k) => [
+      k,
+      'convert into Hulk style, giant muscular build, green skin, angry expression, ripped clothes, realistic cinematic look',
+    ]),
+    ...['zombie', 'zombiefy', 'jadi-zombie'].map((k) => [
+      k,
+      'convert into a realistic zombie, pale decaying skin, cinematic horror lighting, dramatic shadows, post-apocalyptic background, detailed and spooky',
+    ]),
+    ...['cyberpunk', 'cyborg', 'robotkan'].map((k) => [
+      k,
+      'convert into cyberpunk cyborg style, mechanical parts integrated into skin, glowing neon LED lines on face and body, futuristic high-tech clothing, synthwave city background',
+    ]),
+
     ...['chibi'].map((k) => [
       k,
       'convert the image into cute chibi anime style, small body proportions, oversized head, large sparkling eyes, colorful soft shading, kawaii expression, pastel color palette, clean line art',
@@ -1492,6 +2083,10 @@ ${loraText}
     ...['tofigur', 'jadifigur'].map((k) => [
       k,
       'illustration of a 1/7 scale figure, highly detailed and realistic style, placed on a computer desk. the figure is mounted on a circular transparent acrylic base (no text or logos). on the computer screen, show the 3D modeling process of the same figure. next to the monitor, place a Tamiya-style toy packaging box with the original artwork printed on it. scene should look natural, clean, and photorealistic.',
+    ]),
+    ...['pantai', 'dipantai', 'jadipantai', 'backgroundpantai'].map((k) => [
+      k,
+      'change background to a tropical beach with white sand, turquoise ocean water, palm trees, sunny sky, photorealistic high detail',
     ]),
   ]);
 

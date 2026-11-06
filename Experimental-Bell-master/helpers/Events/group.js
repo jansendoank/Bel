@@ -4,6 +4,9 @@ const baileys = 'baileys'.import();
 
 /*!-======[ Default Export Function ]======-!*/
 export default async function on({ cht, Exp, store, ev, is, chatDb }) {
+  const preferences = is?.jadibot
+    ? ((Data.preferencesBot ??= {})[Exp.user.id.split(':')[0]] ??= {})
+    : (Data.preferences ??= {});
   const { id, sender } = cht;
   const { func } = Exp;
   const { archiveMemories: memories, dateFormatter } = func;
@@ -295,7 +298,7 @@ export default async function on({ cht, Exp, store, ev, is, chatDb }) {
     async () => {
       try {
         let meta = Exp.groupMetdata;
-        let pref = Data.preferences[cht.id];
+        let pref = preferences[cht.id];
 
         let topUsers = [];
         let topEnergy = await Promise.all(
@@ -401,7 +404,7 @@ ${topEnergy}
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
               newsletterName: 'Termai',
-              newsletterJid: '120363301254798220@newsletter',
+              newsletterJid: '120363205560908891@newsletter',
             },
           },
         };
@@ -418,9 +421,9 @@ ${topEnergy}
       isAdmin: true,
     },
     async () => {
-      if (Data.preferences[id]['antitagall'])
+      if (preferences[id]['antitagall'])
         return cht.reply('Tagall tidak di izinkan disini!');
-      let mentions = Exp.groupMembers.map((a) => a.id);
+      let mentions = Exp.groupMembers.map((a) => a.id).filter(Boolean);
       let text =
         cht.cmd == 'tagall'
           ? `\`${cht?.q ? await func.replaceLidToPn(cht.q, cht) : 'TAG ALL'}\`\n`
@@ -439,6 +442,302 @@ ${topEnergy}
         {
           quoted: cht,
         }
+      );
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['totag', 'tohidetag'],
+      listmenu: ['totag', 'tohidetag'],
+      tag: 'group',
+      isGroup: true,
+      isAdmin: true,
+      isQuoted: 'Balas pesan yang ingin di-jadikan hidetag',
+    },
+    async ({ cht }) => {
+      let mentions = Exp.groupMembers.map((a) => a.id).filter(Boolean);
+      let loadMsg = await store.loadMessage(cht.id, cht.quoted.stanzaId);
+      let rawMessage = loadMsg?.message || cht.quoted?.message;
+
+      if (!rawMessage) {
+        return cht.reply('❌ Pesan dari quoted tidak ditemukan di store!');
+      }
+
+      let msg = JSON.parse(JSON.stringify(rawMessage));
+      let type = baileys.getContentType(msg);
+
+      if (type === 'conversation') {
+        msg.extendedTextMessage = {
+          text: msg.conversation,
+          contextInfo: {
+            mentionedJid: mentions,
+          },
+        };
+        delete msg.conversation;
+        type = 'extendedTextMessage';
+      }
+
+      if (msg[type]) {
+        msg[type].contextInfo = {
+          ...(msg[type].contextInfo || {}),
+          mentionedJid: mentions,
+        };
+
+        if (cht.q) {
+          if (type === 'extendedTextMessage') {
+            msg.extendedTextMessage.text = `${cht.q}\n\n${msg.extendedTextMessage.text || ''}`;
+          } else if (msg[type].caption !== undefined) {
+            msg[type].caption = `${cht.q}\n\n${msg[type].caption || ''}`;
+          }
+        }
+      }
+
+      await Exp.relayMessage(cht.id, msg, {});
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['absen'],
+      listmenu: ['absen <options>'],
+      tag: 'group',
+      isGroup: true,
+    },
+    async () => {
+      let pref = (preferences[id] ??= {});
+      let localeAbsen = infos.group.absen;
+
+      let parseDuration = (str) => {
+        if (!str) return 3600000;
+        let m = str.trim().match(/^(\d+)\s*(m|h|d|min|jam|menit)?$/i);
+        if (!m) return 3600000;
+        let val = parseInt(m[1]);
+        let unit = (m[2] || 'm').toLowerCase();
+        if (unit === 'h' || unit === 'jam') return val * 3600000;
+        if (unit === 'd' || unit === 'hari') return val * 86400000;
+        return val * 60000;
+      };
+
+      let formatDurationStr = (ms) => {
+        let totalMinutes = Math.floor(ms / 60000);
+        if (totalMinutes >= 60) {
+          let hours = Math.floor(totalMinutes / 60);
+          let mins = totalMinutes % 60;
+          return mins > 0 ? `${hours} Jam ${mins} Menit` : `${hours} Jam`;
+        }
+        return `${totalMinutes} Menit`;
+      };
+
+      let input = (cht.q || '').trim();
+      let parts = input.split('|').map((s) => s.trim());
+      let firstWord = parts[0]?.split(' ')?.[0]?.toLowerCase();
+
+      let groupMeta = await getGroupMetadata(id).catch(() => null);
+      let groupName = groupMeta?.subject || 'GROUP';
+      let participants = groupMeta?.participants || [];
+
+      if (!input) {
+        if (pref.absen) {
+          let d = pref.absen;
+          let listText = (d.list || [])
+            .map((item, idx) => {
+              let num = item.jid.split('@')[0];
+              return `${idx + 1}. ${item.name} (@${num}) - ${item.time}`;
+            })
+            .join('\n');
+          let dateStr = dateFormatter(d.startTime, 'Asia/Jakarta');
+          let expireTimeStr =
+            dateFormatter(d.expiredTime, 'Asia/Jakarta').split(' ')[1] || '';
+          let durationText = formatDurationStr(d.expiredTime - d.startTime);
+
+          let tplData = {
+            groupName: d.groupName || groupName,
+            title: d.title,
+            date: dateStr.split(' ')[0] || dateStr,
+            time: dateStr.split(' ')[1] || '',
+            list: d.list || [],
+            listText: listText || '_Belum ada yang mengisi absen_',
+            durationText,
+            expireTimeStr,
+          };
+          let mentions = (d.list || []).map((x) => x.jid);
+          return Exp.sendMessage(
+            id,
+            {
+              text: localeAbsen.updated(tplData),
+              mentions,
+            },
+            { quoted: cht }
+          );
+        } else {
+          return cht.reply(localeAbsen.guide);
+        }
+      }
+
+      if (['start', 'buat', 'mulai'].includes(firstWord)) {
+        if (!is.groupAdmins && !is.owner) {
+          return cht.reply(localeAbsen.onlyAdmin);
+        }
+        if (pref.absen) {
+          return cht.reply(localeAbsen.alreadyActive);
+        }
+
+        let rawTitle = parts[0].substring(firstWord.length).trim();
+        let title = rawTitle || 'Absen Anggota Group';
+        let durationMs = parseDuration(parts[1]);
+        let mentionOption = (parts[2] || 'yes').toLowerCase();
+        let isMentionAll = ['yes', 'ya', 'true', 'all', '1'].includes(
+          mentionOption
+        );
+
+        let startTime = Date.now();
+        let expiredTime = startTime + durationMs;
+        let dateStr = dateFormatter(startTime, 'Asia/Jakarta');
+        let expireTimeStr =
+          dateFormatter(expiredTime, 'Asia/Jakarta').split(' ')[1] || '';
+        let durationText = formatDurationStr(durationMs);
+
+        pref.absen = {
+          title,
+          groupName,
+          creator: sender,
+          startTime,
+          expiredTime,
+          list: [],
+        };
+
+        let tplData = {
+          groupName,
+          title,
+          date: dateStr.split(' ')[0] || dateStr,
+          time: dateStr.split(' ')[1] || '',
+          list: [],
+          listText: '',
+          durationText,
+          expireTimeStr,
+        };
+
+        let mentions = isMentionAll ? participants.map((p) => p.id) : [];
+        return Exp.sendMessage(
+          id,
+          {
+            text: localeAbsen.started(tplData),
+            mentions,
+          },
+          { quoted: cht }
+        );
+      }
+
+      if (['stop', 'delete', 'selesai', 'hapus'].includes(firstWord)) {
+        if (!is.groupAdmins && !is.owner) {
+          return cht.reply(localeAbsen.onlyAdmin);
+        }
+        if (!pref.absen) {
+          return cht.reply(localeAbsen.notActive);
+        }
+
+        let d = pref.absen;
+        let presentJids = new Set((d.list || []).map((x) => x.jid));
+        let absentList = participants.filter((p) => !presentJids.has(p.id));
+
+        let listText = (d.list || [])
+          .map((item, idx) => {
+            let num = item.jid.split('@')[0];
+            return `${idx + 1}. ${item.name} (@${num}) - ${item.time}`;
+          })
+          .join('\n');
+
+        let absentText = absentList
+          .map((item, idx) => {
+            let num = item.id.split('@')[0];
+            return `${idx + 1}. @${num}`;
+          })
+          .join('\n');
+
+        let tplData = {
+          groupName: d.groupName || groupName,
+          title: d.title,
+          list: d.list || [],
+          listText,
+          absentList,
+          absentText,
+        };
+
+        let tpl = localeAbsen.stopped(tplData);
+        let mentions = [
+          ...(d.list || []).map((x) => x.jid),
+          ...absentList.map((x) => x.id),
+        ];
+
+        delete pref.absen;
+
+        return Exp.sendMessage(
+          id,
+          {
+            text: typeof tpl === 'string' ? tpl : tpl.body,
+            ...(typeof tpl === 'object' && tpl.footer
+              ? { footer: tpl.footer }
+              : {}),
+            mentions,
+          },
+          { quoted: cht }
+        );
+      }
+
+      if (!pref.absen) {
+        return cht.reply(localeAbsen.notActive);
+      }
+
+      let nameInput = input;
+      if (nameInput !== nameInput.toUpperCase() || !/[A-Z]/.test(nameInput)) {
+        return cht.reply(localeAbsen.mustCapital);
+      }
+
+      if (pref.absen.list.some((item) => item.jid === sender)) {
+        return cht.reply(localeAbsen.alreadySubmitted);
+      }
+
+      let nowTimeStr =
+        dateFormatter(Date.now(), 'Asia/Jakarta').split(' ')[1] || '';
+      pref.absen.list.push({
+        name: nameInput,
+        jid: sender,
+        time: nowTimeStr,
+      });
+
+      let d = pref.absen;
+      let listText = d.list
+        .map((item, idx) => {
+          let num = item.jid.split('@')[0];
+          return `${idx + 1}. ${item.name} (@${num}) - ${item.time}`;
+        })
+        .join('\n');
+
+      let dateStr = dateFormatter(d.startTime, 'Asia/Jakarta');
+      let expireTimeStr =
+        dateFormatter(d.expiredTime, 'Asia/Jakarta').split(' ')[1] || '';
+      let durationText = formatDurationStr(d.expiredTime - d.startTime);
+
+      let tplData = {
+        groupName: d.groupName || groupName,
+        title: d.title,
+        date: dateStr.split(' ')[0] || dateStr,
+        time: dateStr.split(' ')[1] || '',
+        list: d.list,
+        listText,
+        durationText,
+        expireTimeStr,
+      };
+
+      let mentions = d.list.map((x) => x.jid);
+      return Exp.sendMessage(
+        id,
+        {
+          text: localeAbsen.updated(tplData),
+          mentions,
+        },
+        { quoted: cht }
       );
     }
   );
@@ -546,7 +845,7 @@ ${topEnergy}
         });
         return cht.reply(text);
       }
-      let sets = Data.preferences[id];
+      let sets = preferences[id];
       sets[input] = sets[input] || false;
       let sholat = {};
       if (input == 'jadwalsholat' && isOn) {
@@ -667,7 +966,7 @@ _Jika sudah mengaktifkan jadwalsholat dengan tipe diatas, anda bisa memastikanny
         .split(/[,\s]+/)
         .filter(Boolean);
       let value = etc?.length > 0 ? etc : false;
-      let sets = Data.preferences[cht.id];
+      let sets = preferences[cht.id];
       sets[cht.cmd] = sets[cht.cmd] || false;
       sets.links = sets.links || ['chat.whatsapp.com'];
       if (['on', 'off'].includes(action)) {
@@ -714,7 +1013,7 @@ _Jika sudah mengaktifkan jadwalsholat dengan tipe diatas, anda bisa memastikanny
         .split(/[,\s]+/)
         .filter(Boolean);
       let value = etc?.length > 0 ? etc : false;
-      let sets = Data.preferences[cht.id];
+      let sets = preferences[cht.id];
       sets[cht.cmd] = sets[cht.cmd] || false;
       sets.badwords = sets.badwords || [];
       if (['on', 'off'].includes(action)) {
@@ -1190,7 +1489,7 @@ _⏳ ${remainingHours} jam ${remainingMinutes} menit lagi._
     }
   );
 
-  ev.on(
+  /*  ev.on(
     {
       cmd: ['opentime', 'closetime', 'schedule'],
       tag: 'group',
@@ -1385,7 +1684,7 @@ _⏳ ${remainingHours} jam ${remainingMinutes} menit lagi._
 
       Data.preferences[id] = preferences;
     }
-  );
+  ); */
   ev.on(
     {
       cmd: ['setwelcome', 'setleave'],
@@ -1487,6 +1786,10 @@ List tag yang bisa digunakan:
   ev.on(
     { cmd: ['listsewa'], tag: 'owner', listmenu: true, isOwner: true },
     async () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply(
+          '🚫 Fitur sewa hanya dapat dikelola melalui Bot Utama!'
+        );
       if (!cfg.sewa)
         return cht.reply(
           'Anda belum mengaktifkan sewa!, aktifkan dengan mengetik *.set sewa on* untuk mengizinkan fitur sewa'
@@ -1540,6 +1843,10 @@ List tag yang bisa digunakan:
       isOwner: true,
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply(
+          '🚫 Fitur sewa hanya dapat dikelola melalui Bot Utama!'
+        );
       if (!cfg.sewa)
         return cht.reply(
           'Anda belum mengaktifkan sewa!, aktifkan dengan mengetik *.set sewa on* untuk mengizinkan fitur sewa'
@@ -1619,7 +1926,7 @@ Example:
           try {
             groupInfo = await Exp.groupGetInviteInfo(inviteMatch[1]);
             _id = groupInfo?.id;
-            args = args.replace(inviteMatch[1], '')
+            args = args.replace(inviteMatch[1], '');
           } catch (e) {
             return await cht.reply(
               `Gagal mendapatkan rata group!\nErr: ${e.message}${e.message.includes('not-authorized') ? '\n> Bot di kick, jadi gabisa ngambil id dari linknya karena akses di blokir, delsewa pake id/nama grub aja kalo masih kesimpen metadata nya!' : ''}`
@@ -1666,7 +1973,7 @@ Example:
         }
 
         if (!_id) return cht.reply(argsText);
-        
+
         const timestamp = func.parseTimeString(args);
         if (!timestamp && cht.cmd !== 'delsewa')
           return cht.reply('Waktu tidak valid!\n\n' + argsText);
@@ -1885,84 +2192,62 @@ Example:
       }
     }
   );
-  
+
   ev.on(
     {
       cmd: ['upswgc', 'swgroup', 'swgc'],
       listmenu: ['swgc'],
       tag: 'group',
-      isAdmin: true,
-      isGroup: true
+      isGroup: true,
     },
     async ({ args }) => {
       try {
-        let { quoted, type: mediaType } = ev.getMediaType(cht)
-        let caption = args || null
-        let messageSecret = await 'crypto'.import().then(a => a.randomBytes(32))
+        let { quoted, type } = ev.getMediaType();
+        let caption = args || null;
+        let content = {
+          text: caption || 'Haii semua!! yang buat sw ini adalah ' + cht.pushName,
+        };
 
-        await Exp.sendMessage(
-          id,
-          {
-            react: {
-              text: '📤', 
-              key: cht.key 
-            }
+        type = type === 'sticker' ? 'image' : type;
+        if (['image', 'video', 'audio'].includes(type)) {
+          let media = await (quoted ? cht.quoted : cht).download().catch(() => null);
+          if (media) {
+            content =
+              type === 'audio'
+                ? { audio: media, mimetype: 'audio/mpeg', ptt: false }
+                : { [type]: media, caption };
           }
-        )
-        
-        let content = { text: caption || 'Haii semua!! yang buat sw ini adalah ' + cht.pushName }
-        
-        if (quoted && mediaType) {
-          let media = await cht.quoted.download()
-          switch (mediaType) {
-            case 'sticker':
-            case 'image':
-            case 'video':
-              content = { [mediaType]: media, caption }
-              break
-            case 'audio':
-              content = { audio: media, mimetype: 'audio/mpeg', ptt: false }
-              break
-            }
-          }
+        }
+
+        await Exp.sendMessage(id, {
+          react: {
+            text: '📤',
+            key: cht.key,
+          },
+        });
 
         let inside = await baileys.generateWAMessageContent(content, {
           upload: Exp.waUploadToServer,
-        })
+        });
+        delete inside.messageContextInfo;
 
-        const m = baileys.generateWAMessageFromContent(
-          id,
-          {
-           groupStatusMessageV2: {
-              message: {
-                ...inside,
-                messageContextInfo: { messageSecret },
-              },
-            },
-          }, {}
-        )
+        let message = Object.create(content[type] ? { [type + 'Message']: inside[type + 'Message'] } : {});
+        message.groupStatusMessageV2 = { message: inside };
 
-        await Exp.relayMessage(
-          id,
-          m.message, 
-          { messageId: m.key.id }
-        )
-      
-        await Exp.sendMessage(
-          id,
-          { 
-            react: { 
-              text: '✅',
-              key: cht.key 
-            }
-          }
-        )
+        let res = await Exp.relayMessage(id, message, {});
+        await Exp.sendMessage(id, {
+          react: {
+            text: '✅',
+            key: cht.key,
+          },
+        });
 
-        return cht.reply(`✅ Berhasil membuat status grup${caption ? `\ncaption: ${caption}` : ''}`)
-      
+        return cht.reply(
+          `✅ Berhasil membuat status grup${caption ? `\ncaption: ${caption}` : ''}`
+        );
       } catch (e) {
-        return cht.reply("Gagal membuat status grup\n\n*Error:*\n" + e)
+        return cht.reply('Gagal membuat status grup\n\n*Error:*\n' + e);
       }
     }
-  )
+  );
 }

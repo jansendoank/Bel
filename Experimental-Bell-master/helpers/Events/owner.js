@@ -6,6 +6,7 @@ const {
   generateWAMessage,
   STORIES_JID,
   generateWAMessageFromContent,
+  prepareWAMessageMedia,
 } = 'baileys'.import();
 
 /*!-======[ Function Imports ]======-!*/
@@ -46,6 +47,9 @@ export default async function on({ cht, Exp, store, ev, is }) {
   const { func } = Exp;
   const { getDirectoriesRecursive, archiveMemories: memories } = func;
   const { id, sender } = cht;
+  const preferences = is?.jadibot
+    ? ((Data.preferencesBot ??= {})[Exp.user.id.split(':')[0]] ??= {})
+    : (Data.preferences ??= {});
 
   function sendPremInfo({ _text, text }, cust = false, number) {
     return Exp.sendMessage(
@@ -80,10 +84,23 @@ export default async function on({ cht, Exp, store, ev, is }) {
       listmenu: ['set'],
       tag: 'owner',
       isOwner: true,
-      args: infos.owner.set,
     },
     async ({ args, urls }) => {
       try {
+        if (!args) {
+          const isWsConnected = keys['__livechart_ws__']?.ws?.readyState === 1;
+          const ownerSection = infos.owner?.statsOwnerSection
+            ? infos.owner.statsOwnerSection({
+                version: cfg.version || '1.0.0',
+                isWsConnected,
+              })
+            : null;
+          let txt = infos.owner.set;
+          if (ownerSection) {
+            txt += '\n\n' + (typeof ownerSection === 'object' && ownerSection?.body ? ownerSection.body : ownerSection);
+          }
+          return cht.reply(txt);
+        }
         let fquotedKeys = Object.keys(Data.fquoted);
         let [t1, t2, t3, t4] = args.split(' ');
         const options = {
@@ -103,11 +120,16 @@ export default async function on({ cht, Exp, store, ev, is }) {
           font: 'font style',
           energy_mode: 'Energy Mode',
           button: 'Button',
+          rich: 'Rich Response Meta AI',
           remoteReaction: 'remoteReaction',
           linkpreview: 'linkpreview',
+          listSection: 'List Section',
           sewa: 'sewa',
           antipc: 'antipc',
+          dadu: 'media dadu ulartangga',
         };
+        let optKey = Object.keys(options).find((k) => k.toLowerCase() === t1?.toLowerCase());
+        if (optKey) t1 = optKey;
         if (!options[t1] && t1.includes('\n')) {
           t1 = t1.split('\n')[0];
         }
@@ -115,36 +137,132 @@ export default async function on({ cht, Exp, store, ev, is }) {
           off = ['off', 'false'],
           isOn = on.includes(t2),
           isOff = off.includes(t2),
-          isOnly = ['onlypc', 'onlygc', 'onlyjoingc'].includes(t2),
-          mode =
-            options[t1] ||
-            (t1 == 'fquoted'
-              ? `Success ${fquotedKeys.includes(t2) ? 'change' : 'add'} fake quoted ${t2}\n\nList fake quoted:\n\n- ${!fquotedKeys.includes(t2) ? [...fquotedKeys, t2].join('\n- ') : fquotedKeys.join('\n- ')}`
-              : t1 == 'voice'
-                ? infos.owner.successSetVoice
-                : t1 == 'logic'
-                  ? infos.owner.successSetLogic
-                  : t1 == 'menu'
-                    ? infos.owner.successSetMenu
-                    : t1 == 'lang'
-                      ? true
-                      : t1 == 'call'
-                        ? infos.owner.setCall
-                        : t1 == 'hadiah'
-                          ? infos.owner.setHadiah
-                          : t1 == 'autoreactsw'
-                            ? infos.owner.setAutoreactSw
-                            : t1 == 'lora'
-                              ? `Example: .${cht.cmd} ${t1} 2067`
-                              : t1 == 'checkpoint'
-                                ? `Example: .${cht.cmd} ${t1} 1552`
-                                : t1 == 'apikey'
+          isOnly = ['onlypc', 'onlygc', 'onlyjoingc'].includes(t2);
+
+        if (is?.jadibot) {
+          const slot = is.jadibotId;
+          const botNum = Exp.user.id.split(':')[0];
+          Data.jadibotDb ??= {};
+          Data.jadibotDb[botNum] ??= {};
+
+          if (t1 === 'dadu') {
+            Data.jadibotDb[botNum].setCmd ??= {};
+            if (isOff || t2 === 'del' || t2 === 'delete' || t2 === 'off') {
+              if (Data.jadibotDb[botNum].daduMedia?.sha256) {
+                delete Data.jadibotDb[botNum].setCmd[
+                  Data.jadibotDb[botNum].daduMedia.sha256
+                ];
+              }
+              delete Data.jadibotDb[botNum].daduMedia;
+              return cht.reply('✅ Media dadu bot kamu berhasil dihapus!');
+            }
+            let { quoted, type } = ev.getMediaType();
+            if (!type)
+              return cht.reply(
+                `Reply pesan media (stiker, gambar, video, audio, dll) dengan caption: ${cht.prefix}set dadu`
+              );
+            let mediaObj = quoted ? cht.quoted : cht;
+            let sha256 = mediaObj[type]?.fileSha256?.toString()?.to('utf16le');
+            let msgContent = (
+              await store.loadMessage(cht.id, mediaObj.stanzaId || cht.key.id)
+            )?.message ||
+              mediaObj.message || { [type + 'Message']: mediaObj[type] };
+
+            if (Data.jadibotDb[botNum].daduMedia?.sha256) {
+              delete Data.jadibotDb[botNum].setCmd[
+                Data.jadibotDb[botNum].daduMedia.sha256
+              ];
+            }
+            if (sha256) Data.jadibotDb[botNum].setCmd[sha256] = '.dadu';
+            Data.jadibotDb[botNum].daduMedia = {
+              sha256,
+              type,
+              message: msgContent,
+            };
+            return cht.reply(
+              `✅ Media dadu berhasil diset!\n- Type: ${type}\n\nSaat permainan Ular Tangga dimulai, media ini akan dikirim sebagai dadu.\nPemain cukup kirim ulang media ini saat gilirannya untuk melempar dadu.${type === 'stickerMessage' || type === 'sticker' ? '\n\n> ℹ️ Karena media berupa stiker, pemain harus menyimpan stiker terlebih dahulu sebelum bisa mengirimnya.' : ''}`
+            );
+          }
+          if (t1 === 'public') {
+            let isPub = isOn || t2 === 'public';
+            if (isOff) isPub = false;
+            Data.jadibot[slot].public = isPub;
+            Data.jadibotDb[botNum].public = isPub;
+            return cht.reply(
+              `✅ Mode Sub-Bot diset ke: *${isPub ? 'Public' : 'Private'}*`
+            );
+          }
+          if (t1 === 'apikey') {
+            if (!t2) return cht.reply('Silahkan masukkan API Key!');
+            Data.jadibot[slot].apikey = t2.trim();
+            Data.jadibotDb[botNum].apikey = t2.trim();
+            Exp.apiKey = t2.trim();
+            return cht.reply(
+              `✅ API Key Sub-Bot berhasil diset ke: \`${t2.trim()}\``
+            );
+          }
+          if (t1 === 'prefix') {
+            let pref = isOff ? false : t2 || false;
+            Data.jadibot[slot].prefix = pref;
+            Data.jadibotDb[botNum].prefix = pref;
+            return cht.reply(
+              `✅ Prefix Sub-Bot diset ke: *${pref === false ? 'Multi-Prefix' : pref}*`
+            );
+          }
+          if (t1 === 'logic') {
+            let profile =
+              func.findValue('profile', cht.q) ||
+              func.findValue('logic', cht.q) ||
+              t2;
+            Data.jadibotDb[botNum].logic = profile;
+            return cht.reply(`✅ AI Logic Sub-Bot berhasil diperbarui!`);
+          }
+          if (t1 === 'voice') {
+            if (!t2)
+              return cht.reply('`LIST VOICES`\n- ' + Data.voices.join('\n- '));
+            Data.jadibotDb[botNum].ai_voice = t2.trim();
+            return cht.reply(`✅ AI Voice Sub-Bot diset ke: *${t2.trim()}*`);
+          }
+          if (options[t1]) {
+            Data.jadibotDb[botNum][t1] = isOn ? true : isOff ? false : t2;
+            return cht.reply(
+              `✅ Setting *${options[t1]}* pada Sub-Bot diset ke: *${t2}*`
+            );
+          }
+          return cht.reply(
+            `❌ Setting \`${t1}\` tidak tersedia atau diset khusus untuk sub-bot.`
+          );
+        }
+
+        let mode =
+          options[t1] ||
+          (t1 == 'fquoted'
+            ? `Success ${fquotedKeys.includes(t2) ? 'change' : 'add'} fake quoted ${t2}\n\nList fake quoted:\n\n- ${!fquotedKeys.includes(t2) ? [...fquotedKeys, t2].join('\n- ') : fquotedKeys.join('\n- ')}`
+            : t1 == 'voice'
+              ? infos.owner.successSetVoice
+              : t1 == 'logic'
+                ? infos.owner.successSetLogic
+                : t1 == 'menu'
+                  ? infos.owner.successSetMenu
+                  : t1 == 'lang'
+                    ? true
+                    : t1 == 'call'
+                      ? infos.owner.setCall
+                      : t1 == 'hadiah'
+                        ? infos.owner.setHadiah
+                        : t1 == 'autoreactsw'
+                          ? infos.owner.setAutoreactSw
+                          : t1 == 'lora'
+                            ? `Example: .${cht.cmd} ${t1} 2067`
+                            : t1 == 'checkpoint'
+                              ? `Example: .${cht.cmd} ${t1} 1552`
+                              : t1 == 'apikey'
+                                ? true
+                                : t1 == 'chid'
                                   ? true
-                                  : t1 == 'chid'
-                                    ? true
-                                    : t1 == 'replyAi'
-                                      ? infos.owner.setReplyAi
-                                      : false);
+                                  : t1 == 'replyAi'
+                                    ? infos.owner.setReplyAi
+                                    : false);
 
         if (!mode) return cht.reply(infos.owner.set);
         switch (t1) {
@@ -216,34 +334,51 @@ export default async function on({ cht, Exp, store, ev, is }) {
             break;
           case 'menu':
             {
-              let list = [
-                'linkpreview',
-                'gif',
-                'gif+linkpreview',
-                'video',
-                'order',
-                'liveLocation',
-                'image',
-                'text',
-                'buttonListImage',
-              ];
+              let menuDescriptions = {
+                buttonImage: 'Pesan ButtonV2 header gambar dengan list menu di body',
+                'buttonImage+footer': 'Pesan ButtonV2 header gambar dengan list menu di footer',
+                rich: 'Pesan Meta AI Rich Card (richResponseMessage) dengan heading, banner & CTA',
+                product: 'Pesan card produk katalog dengan foto bot dan teks menu di footer',
+                buttonListProduct: 'Pesan interaktif header produk dengan tombol dropdown list kategori',
+                buttonListImage: 'Pesan interaktif header gambar dengan tombol dropdown list kategori',
+                linkpreview: 'Pesan teks dengan link preview website dan thumbnail besar',
+                gif: 'Pesan video animasi looping (GIF) dengan teks menu',
+                'gif+linkpreview': 'Pesan animasi GIF dengan preview kartu ad reply',
+                video: 'Pesan video dengan caption teks menu',
+                order: 'Pesan invoice/order katalog WhatsApp',
+                liveLocation: 'Pesan lokasi langsung (live location) dengan teks menu',
+                image: 'Pesan gambar foto bot dengan caption teks menu',
+                text: 'Pesan teks polos tanpa media',
+              };
+              let list = Object.keys(menuDescriptions);
+              let formattedList = list
+                .map((key) => `• ${key}\n> ${menuDescriptions[key]}`)
+                .join('\n\n');
               let tlist = func.tagReplacer(infos.owner.listSetmenu, {
-                list: list.join('\n- '),
+                list: formattedList,
               });
-              if (!t2) return cht.reply(tlist);
+              if (!t2) {
+                return cht.question(tlist, {
+                  emit: `${cht.cmd} ${t1}`,
+                  exp: Date.now() + 60000,
+                  accepts: list,
+                });
+              }
               if (!list.includes(t2))
-                return cht.reply(`*Type menu _${t2}_ notfound!*\n\n${tlist}`);
-              if (t2.includes('button') && !cfg.button)
+                return cht.reply(`Tipe menu ${t2} tidak ditemukan!\n\n${tlist}`);
+              if ((t2 === 'rich' || t2.includes('rich')) && !cfg.rich)
+                return cht.reply(infos.owner.richDisabled);
+              if ((t2.includes('button') || t2.includes('interactive')) && !cfg.button)
                 return cht.reply(
-                  'Anda belum mengaktifkan button!, silahkan ketik *.set button on* untuk mengaktifkan!'
+                  'Fitur button belum aktif. Silahkan ketik .set button on terlebih dahulu!'
                 );
               global.cfg.menu_type = t2;
               let etc = {};
               if (t2.includes('linkpreview')) {
                 if ('linkpreview' in cfg && cfg.linkpreview !== true) {
-                  etc.footer = `_Linkpreview dalam mode off, menu akan menjadi pesan teks biasa tanpa preview. untuk kembali mengaktifkan linkpreview, ketik .set linkpreview on (hanya dapat dilakukan oleh owner)`;
+                  etc.footer = 'Linkpreview dalam mode off, menu akan menjadi pesan teks biasa tanpa preview.';
                 } else {
-                  etc.footer = `_Menu mungkin tidak terlihat di beberapa user, whatsapp melakukan pembaruan secara tidak merata dan pada update terbaru linkpreview tidak dapat terlihat_`;
+                  etc.footer = 'Menu mungkin tidak terlihat di beberapa versi WhatsApp terbaru.';
                 }
               }
               cht.reply(func.tagReplacer(mode, { menu: t2 }), etc);
@@ -360,7 +495,12 @@ export default async function on({ cht, Exp, store, ev, is }) {
                   '`input mengandung karakter yang bukan emoji atau emoji tidak valid`\n\n' +
                     mode
                 );
-              let emojis = [...t2];
+              let emojis =
+                typeof Intl !== 'undefined' && Intl.Segmenter
+                  ? [...new Intl.Segmenter().segment(t2)].map((s) => s.segment)
+                  : t2.match(/(\p{Emoji_Presentation}|\p{Emoji}\uFE0F+)/gu) || [
+                      ...t2,
+                    ];
               cfg.reactsw = { on: true, emojis };
               return cht.reply(
                 infos.owner.successSetAutoreactSw.replace(
@@ -498,30 +638,76 @@ export default async function on({ cht, Exp, store, ev, is }) {
             break;
           case 'chid':
             {
-              let isUrl =
-                is.url.length > 0
-                  ? is.url[0]
-                  : is.quoted.url.length > 0
-                    ? is.quoted.url[0]
-                    : null;
-              if (!isUrl)
-                return await cht.reply(`Reply/Sertakan link Channelnya!`);
-              let res = (await store.loadMessage(id, cht.quoted.stanzaId))
-                .message[cht.quoted.type].contextInfo
-                .forwardedNewsletterMessageInfo;
-              if (!res)
-                return cht.reply('Gagal, id saluran mungkin tidak tersedia');
-              let _id = isUrl.match(/channel\/([^\/]+)/)?.[1];
-              let d = await Exp.newsletterMetadata('invite', _id);
-              let meta = d?.thread_metadata || {};
+              let urlCandidate =
+                (is.url && is.url.length > 0 ? is.url[0] : null) ||
+                (is.quoted?.url && is.quoted.url.length > 0 ? is.quoted.url[0] : null) ||
+                (typeof t2 === 'string' && t2.includes('channel/') ? t2 : null);
 
-              let name = meta?.name?.text || '-';
-              cfg.menu.chId = {
-                newsletterJid: d.id,
-                serverMessageId: 2025,
-                newslettedName: name,
-              };
-              cht.reply('Success...✅️');
+              let inviteCode =
+                urlCandidate?.match(/channel\/([^\/\s\?]+)/)?.[1] ||
+                (typeof t2 === 'string' && t2.trim().length >= 10 && !t2.includes(' ') && !t2.startsWith('http')
+                  ? t2.trim()
+                  : null);
+
+              if (inviteCode) {
+                try {
+                  let d = await Exp.newsletterMetadata('invite', inviteCode);
+                  if (d?.id) {
+                    let meta = d?.thread_metadata || {};
+                    let name = meta?.name?.text || '-';
+                    cfg.menu.chId = {
+                      newsletterJid: d.id,
+                      serverMessageId: 2025,
+                      newsletterName: name,
+                      newslettedName: name,
+                    };
+                    cfg.chId = cfg.menu.chId;
+                    return cht.reply(infos.owner.setChidSuccess(name, d.id));
+                  }
+                } catch (e) {
+                  return cht.reply('❌ Gagal mengambil metadata channel: ' + (e.message || e));
+                }
+              }
+
+              let fwdInfo = null;
+              if (is.quoted) {
+                let quotedRaw =
+                  cht?.message?.[cht.type]?.contextInfo?.quotedMessage;
+                let qMtype = cht.quoted?.mtype || (quotedRaw ? Object.keys(quotedRaw)[0] : null);
+                fwdInfo =
+                  quotedRaw?.[qMtype]?.contextInfo?.forwardedNewsletterMessageInfo ||
+                  cht.quoted?.contextInfo?.forwardedNewsletterMessageInfo ||
+                  cht.quoted?.[cht.quoted?.type]?.contextInfo?.forwardedNewsletterMessageInfo;
+
+                if (!fwdInfo && cht.quoted.stanzaId) {
+                  try {
+                    let loaded = await store.loadMessage(id, cht.quoted.stanzaId);
+                    if (loaded?.message) {
+                      let qType = getContentType(loaded.message);
+                      fwdInfo = loaded.message?.[qType]?.contextInfo?.forwardedNewsletterMessageInfo;
+                    }
+                  } catch {}
+                }
+              }
+
+              if (!fwdInfo) {
+                fwdInfo = cht?.message?.[cht.type]?.contextInfo?.forwardedNewsletterMessageInfo;
+              }
+
+              if (fwdInfo?.newsletterJid) {
+                let name = fwdInfo.newsletterName || '-';
+                let jid = fwdInfo.newsletterJid;
+                cfg.menu.chId = {
+                  newsletterJid: jid,
+                  serverMessageId: fwdInfo.serverMessageId || 2025,
+                  newsletterName: name,
+                  newslettedName: name,
+                };
+                cfg.chId = cfg.menu.chId;
+                return cht.reply(infos.owner.setChidSuccess(name, jid));
+              }
+
+              return cht.reply(infos.owner.setChidHelp);
             }
             break;
           case 'antitagowner':
@@ -683,6 +869,45 @@ export default async function on({ cht, Exp, store, ev, is }) {
             }
             break;
 
+          case 'dadu':
+            {
+              Data.setCmd ??= {};
+              if (isOff || t2 === 'del' || t2 === 'delete' || t2 === 'off') {
+                if (Data.daduMedia?.sha256) {
+                  delete Data.setCmd[Data.daduMedia.sha256];
+                }
+                delete Data.daduMedia;
+                return cht.reply('✅ Media dadu bot utama berhasil dihapus!');
+              }
+              let { quoted, type } = ev.getMediaType();
+              if (!type)
+                return cht.reply(
+                  `Reply pesan media (stiker, gambar, video, audio, dll) dengan caption: ${cht.prefix}set dadu`
+                );
+              let mediaObj = quoted ? cht.quoted : cht;
+              let sha256 = mediaObj[type]?.fileSha256
+                ?.toString()
+                ?.to('utf16le');
+              let msgContent = (
+                await store.loadMessage(cht.id, mediaObj.stanzaId || cht.key.id)
+              )?.message ||
+                mediaObj.message || { [type + 'Message']: mediaObj[type] };
+
+              if (Data.daduMedia?.sha256) {
+                delete Data.setCmd[Data.daduMedia.sha256];
+              }
+              if (sha256) Data.setCmd[sha256] = '.dadu';
+              Data.daduMedia = {
+                sha256,
+                type,
+                message: msgContent,
+              };
+              return cht.reply(
+                `✅ Media dadu berhasil diset!\n- Type: ${type}\n\nSaat permainan Ular Tangga dimulai, media ini akan dikirim sebagai dadu.\nPemain cukup kirim ulang media ini saat gilirannya untuk melempar dadu.${type === 'stickerMessage' || type === 'sticker' ? '\n\n> ℹ️ Karena media berupa stiker, pemain harus menyimpan stiker terlebih dahulu sebelum bisa mengirimnya.' : ''}`
+              );
+            }
+            break;
+
           default:
             if (isOn) {
               if (
@@ -737,6 +962,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async ({ media }) => {
+      if (is?.jadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       await cht.reply(infos.messages.wait);
       let text = infos.owner.successSetThumb;
       if (cht.cmd == 'setthumb') {
@@ -761,6 +988,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async ({ media }) => {
+      if (is?.jadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       await cht.reply(infos.messages.wait);
       Exp.setProfilePicture(Exp.number, media)
         .then((a) => cht.reply('Success...✅️'))
@@ -816,6 +1045,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ media }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let [t1, t2, t3] = (cht.q || '').split(' ');
 
       let lists = Object.keys(Lists);
@@ -847,6 +1078,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ media }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let [t1, t2, t3] = (cht.q || '').split(' ');
 
       let lists = Object.keys(Lists);
@@ -898,6 +1131,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ media }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let [t1, t2, t3] = (cht.q || '').split(' ');
 
       let lists = Object.keys(Lists);
@@ -979,6 +1214,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let num = cht.q?.split('|')?.[1] || cht.q;
       if (isNaN(num)) return cht.reply('Energy harus berupa angka!');
       let sender = cht.mention[0].split('@')[0];
@@ -1035,6 +1272,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
     },
     async ({ cht }) => {
       let isOwnerAccess = cht.cmd !== 'premium';
+      if (isOwnerAccess && (is?.jadibot || Exp?.isJadibot))
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let text = isOwnerAccess ? infos.owner.premium_add : '';
       let trial = Data.users[cht.sender.split('@')[0]]?.claimPremTrial;
       if (!isOwnerAccess)
@@ -1106,6 +1345,10 @@ export default async function on({ cht, Exp, store, ev, is }) {
       txt += `🔑Premium: ${user.premium.time >= Date.now() ? 'yes' : 'no'}`;
       if (user.premium.time >= Date.now()) {
         user.premium = { ...claim, ...prm };
+        if (['addpremium', 'addprem'].includes(cht.cmd)) {
+          user.energy =
+            (parseFloat(user.energy) || 0) + parseFloat(claim.energy || 0);
+        }
         let txc = '\n\n*🎁Bonus `(Berlaku selama premium)`*';
         for (let i of claims) {
           txc += `\n- ${i}: +${claim[i]}`;
@@ -1132,6 +1375,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let user = await Exp.func.archiveMemories.get(cht.mention[0]);
       let Sender = cht.mention[0].split('@')[0];
       if (!cht.quoted && !cht.q.includes('|') && cht.cmd == 'banned')
@@ -1178,6 +1423,38 @@ export default async function on({ cht, Exp, store, ev, is }) {
     }
   );
 
+  const getCekApiKeyLinkPreview = async () => {
+    if (!keys['cekapikey_lp_media']) {
+      try {
+        let rawBuf = await Exp.func.getBuffer('https://c.termai.cc/i138/SqHbc.png');
+        let resMedia = await prepareWAMessageMedia(
+          { image: rawBuf },
+          { upload: Exp.waUploadToServer, mediaTypeOverride: 'thumbnail-link' }
+        );
+        if (resMedia?.imageMessage) {
+          keys['cekapikey_lp_media'] = resMedia.imageMessage;
+          keys['cekapikey_lp_thumb'] = rawBuf;
+        }
+      } catch {}
+    }
+    let imgMsg = keys['cekapikey_lp_media'];
+    return {
+      'matched-text': 'https://termai.cc',
+      title: '🔑 Termai API • Key Checker & Usage Status',
+      description: 'Pantau sisa kuota hit, limit harian, dan masa aktif API Key',
+      jpegThumbnail: imgMsg?.jpegThumbnail
+        ? Buffer.from(imgMsg.jpegThumbnail)
+        : keys['cekapikey_lp_thumb'] || undefined,
+      highQualityThumbnail: imgMsg
+        ? {
+            ...imgMsg,
+            width: 1280,
+            height: 720,
+          }
+        : undefined,
+    };
+  };
+
   ev.on(
     {
       cmd: ['cekapikey'],
@@ -1190,27 +1467,18 @@ export default async function on({ cht, Exp, store, ev, is }) {
       let res = await fetch(
         api.xterm.url + '/api/tools/key-checker?key=' + args
       ).then((a) => a.json());
-      const {
-        limit,
-        usage,
-        totalHit,
-        remaining,
-        resetEvery,
-        reset,
-        expired,
-        isExpired,
-        features,
-      } = res.data;
-      const resetTime = resetEvery.format;
-      const featuresList = Object.entries(features)
-        .map(
-          ([feature, details]) =>
-            `🔹 **${feature}**:\n   - Maksimal: ${details.max} penggunaan/hari\n   - Hit Today: ${details.use} kali\n   - Total Hit: ${details.hit}\n`
-        )
-        .join('\n');
+      let text = infos.owner?.cekapikeyFormat
+        ? infos.owner.cekapikeyFormat(res.data)
+        : `🔑 *STATUS TERMAI API KEY*\n\n• *Status:* ${res?.data?.isExpired ? '⛔ Kedaluwarsa' : '🟢 Aktif'}`;
 
-      cht.reply(
-        `✅ **Status API Key**: ${isExpired ? '⛔ Kedaluwarsa' : '✅ Aktif'}\n🔒 **Batas Harian**: ${limit} hit\n📊 **Penggunaan Saat Ini**: ${usage} hit\n📈 **Total Hit**: ${totalHit} hit\n🟢 **Sisa Hit**: ${remaining} hit\n\n⏳ **Reset Limit**:\n   - **Waktu Reset**: ${reset}\n   - **Interval Reset**: ${resetTime.days} hari ${resetTime.hours} jam ${resetTime.minutes} menit ${resetTime.seconds} detik\n📅 **Masa Berlaku**:\n   - **Berakhir Pada**: ${expired}\n   - **Status Kedaluwarsa**: ${isExpired ? '✅ Sudah Kedaluwarsa' : '❌ Belum Kedaluwarsa'}\n\n✨ **Fitur yang Tersedia**:\n${featuresList}\n📌 **Catatan**: Gunakan API secara bijak dan sesuai dengan batas penggunaan.\n  `
+      let linkPreview = await getCekApiKeyLinkPreview();
+      return Exp.sendMessage(
+        cht.id,
+        {
+          text: `https://termai.cc\n` + text,
+          linkPreview,
+        },
+        { quoted: cht }
       );
     }
   );
@@ -1224,6 +1492,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ args }) => {
+      if (is?.jadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       try {
         await cht.reply('Proses backup dimulai...');
         let b = './backup.tar.gz';
@@ -1262,6 +1532,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ args }) => {
+      if (is?.jadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       await cht.reply('Clearing session...');
       let sessions = fs.readdirSync(session).filter((a) => a !== 'creds.json');
       //const perStep = Math.ceil(sessions.length / 5)
@@ -1294,22 +1566,34 @@ export default async function on({ cht, Exp, store, ev, is }) {
         return cht.replyWithTag(infos.owner.setRole, {
           role: `- ${keyroles.join('\n- ')}`,
         });
-      let Sender = cht.mention[0].split('@')[0];
-      let role = cht.quoted ? cht.q : cht.q?.split('|')[1];
-      /* let frole = keyroles.find((a) =>
-        a.toLowerCase().includes(role?.toLowerCase().trim())
+      let Sender = cht.quoted
+        ? cht.quoted.sender
+        : cht.mention[0] ||
+          (cht.q.includes('|')
+            ? cht.q
+                .split('|')[0]
+                .trim()
+                .replace(/[^0-9]/g, '') + '@s.whatsapp.net'
+            : null);
+      if (!Sender)
+        return cht.replyWithTag(infos.owner.setRole, {
+          role: `- ${keyroles.join('\n- ')}`,
+        });
+      let role = (
+        cht.quoted ? cht.q : cht.q.includes('|') ? cht.q.split('|')[1] : cht.q
+      )?.trim();
+      let targetJid = Sender.includes('@')
+        ? Sender
+        : Sender + '@s.whatsapp.net';
+      let memories = await func.archiveMemories.setItem(
+        targetJid,
+        'role',
+        role
       );
-      if (!frole)
-        return cht.replyWithTag(
-          '*[ Role tidak valid❗]*\n\n' + infos.owner.setRole,
-          { role: `- ${keyroles.join('\n- ')}` }
-        );*/
-      let memories = await func.archiveMemories.setItem(Sender, 'role', role);
-      await cht.reply('Success✅');
-      cht.memories = memories;
-      cht.pushName = func.getName(Sender);
-      await sleep(100);
-      ev.emit('profile');
+      await cht.reply(
+        `✅ Berhasil memperbarui status hubungan/role *@${targetJid.split('@')[0]}* menjadi *${role}*`,
+        { mentions: [targetJid] }
+      );
     }
   );
 
@@ -1322,6 +1606,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isCoOwner: false,
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let reason = args || 'Tidak diketahui';
       if (cht.cmd == 'offline') {
         global.offresponse = {};
@@ -1354,6 +1640,31 @@ export default async function on({ cht, Exp, store, ev, is }) {
     },
     ({ args }) => {
       let mention = cht.mention.map((a) => String(a.split('@')[0]));
+      if (is?.jadibot) {
+        const slot = is.jadibotId;
+        const botNum = Exp.user.id.split(':')[0];
+        Data.jadibot[slot].owners ??= [Data.jadibot[slot].owner];
+        Data.jadibotDb[botNum].owners ??= Data.jadibot[slot].owners;
+        if ('addowner' === cht.cmd) {
+          mention.forEach((m) => {
+            if (!Data.jadibot[slot].owners.includes(m))
+              Data.jadibot[slot].owners.push(m);
+            if (!Data.jadibotDb[botNum].owners.includes(m))
+              Data.jadibotDb[botNum].owners.push(m);
+          });
+        } else {
+          Data.jadibot[slot].owners = Data.jadibot[slot].owners.filter(
+            (a) => !mention.includes(String(a).split('@')[0])
+          );
+          Data.jadibotDb[botNum].owners = Data.jadibotDb[botNum].owners.filter(
+            (a) => !mention.includes(String(a).split('@')[0])
+          );
+        }
+        return cht.reply(
+          `Success ${'addowner' === cht.cmd ? 'add' : 'delete'} owner jadibot ${mention.map((a) => '@' + a).join(', ')}!`,
+          { mentions: cht.mention }
+        );
+      }
       owner =
         'addowner' == cht.cmd
           ? [...owner, ...mention]
@@ -1374,6 +1685,31 @@ export default async function on({ cht, Exp, store, ev, is }) {
     },
     ({ args }) => {
       let mention = cht.mention.map((a) => String(a.split('@')[0]));
+      if (is?.jadibot) {
+        const slot = is.jadibotId;
+        const botNum = Exp.user.id.split(':')[0];
+        Data.jadibot[slot].coowners ??= [];
+        Data.jadibotDb[botNum].coowners ??= [];
+        if ('addcoowner' === cht.cmd) {
+          mention.forEach((m) => {
+            if (!Data.jadibot[slot].coowners.includes(m))
+              Data.jadibot[slot].coowners.push(m);
+            if (!Data.jadibotDb[botNum].coowners.includes(m))
+              Data.jadibotDb[botNum].coowners.push(m);
+          });
+        } else {
+          Data.jadibot[slot].coowners = Data.jadibot[slot].coowners.filter(
+            (a) => !mention.includes(String(a).split('@')[0])
+          );
+          Data.jadibotDb[botNum].coowners = Data.jadibotDb[
+            botNum
+          ].coowners.filter((a) => !mention.includes(String(a).split('@')[0]));
+        }
+        return cht.reply(
+          `Success ${'addcoowner' === cht.cmd ? 'add' : 'delete'} coowner jadibot ${mention.map((a) => '@' + a).join(', ')}!`,
+          { mentions: cht.mention }
+        );
+      }
       coowner =
         'addcoowner' == cht.cmd
           ? [...coowner, ...mention]
@@ -1385,24 +1721,368 @@ export default async function on({ cht, Exp, store, ev, is }) {
     }
   );
 
+  const getUpdateLinkPreview = async () => {
+    if (!keys['update_lp_media']) {
+      try {
+        let rawBuf = await Exp.func.getBuffer('https://c.termai.cc/i116/M0PLc.png');
+        let resMedia = await prepareWAMessageMedia(
+          { image: rawBuf },
+          { upload: Exp.waUploadToServer, mediaTypeOverride: 'thumbnail-link' }
+        );
+        if (resMedia?.imageMessage) {
+          keys['update_lp_media'] = resMedia.imageMessage;
+          keys['update_lp_thumb'] = rawBuf;
+        }
+      } catch {}
+    }
+    let imgMsg = keys['update_lp_media'];
+    return {
+      'matched-text': 'https://termai.cc',
+      title: '🔔 Experimental-Bell • System Update',
+      description: 'Termai Ecosystem • Cumulative Update Engine',
+      jpegThumbnail: imgMsg?.jpegThumbnail
+        ? Buffer.from(imgMsg.jpegThumbnail)
+        : keys['update_lp_thumb'] || undefined,
+      highQualityThumbnail: imgMsg
+        ? {
+            ...imgMsg,
+            width: 1280,
+            height: 720,
+          }
+        : undefined,
+    };
+  };
+
   ev.on(
     {
-      cmd: ['update'],
-      listmenu: ['update'],
+      cmd: ['update', 'checkupdate'],
+      listmenu: ['update', 'checkupdate'],
       tag: 'owner',
       isOwner: true,
       isCoOwner: false,
-      urls: {
-        formats: [
-          'https://c.termai.cc',
-          'https://cdn.xtermai.xyz',
-          'https://pastebin.com',
-          'https://raw.githubusercontent.com/Rifza123/Experimental-Bell/refs/heads/',
-        ],
-        msg: true,
-      },
     },
     async ({ urls }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
+
+      let input = (cht.q || cht.msg || '').trim().toLowerCase();
+
+      if (cht.cmd === 'checkupdate' || input === 'check' || input === 'cek') {
+        try {
+          await cht.reply('⏳ *Memeriksa pembaruan ke server Termai...*');
+          let updateInfo = await global.checkUpdate();
+          if (!updateInfo || !updateInfo.hasUpdate) {
+            return cht.reply(`✅ *Bot Anda sudah menggunakan versi terbaru (v${updateInfo?.currentVersion || cfg.version || '1.0.0'}).*`);
+          }
+
+          if (updateInfo.isMajorGap) {
+            let majorText = Data.infos?.updateMajorNotify
+              ? Data.infos.updateMajorNotify({
+                  version: updateInfo.latestVersion,
+                  currentVersion: updateInfo.currentVersion,
+                  pendingCount: updateInfo.pendingReleasesCount,
+                  files: updateInfo.files || [],
+                  changelog: updateInfo.changelogs,
+                })
+              : `> ⚠️ *UPDATE NOTIFICATION (MAJOR)*\n\n` +
+                `• *Versi Baru:* *v${updateInfo.latestVersion}*\n` +
+                `• *Versi Bot Anda:* *v${updateInfo.currentVersion}*\n` +
+                `• *Total Rilis Tertinggal:* ${updateInfo.pendingReleasesCount} update\n` +
+                `• *Total Berkas:* ${(updateInfo.files || []).length} file unik\n\n` +
+                (updateInfo.changelogs ? `📋 *Catatan Perubahan:*\n${updateInfo.changelogs}\n\n` : '') +
+                `_Versi bot Anda tertinggal cukup jauh. Disarankan untuk melakukan git pull atau clone ulang script terbaru agar seluruh struktur sinkron._\n\n` +
+                `🌐 *Repository:* https://github.com/Rifza123/Experimental-Bell`;
+            let linkPreview = await getUpdateLinkPreview();
+            return Exp.sendMessage(
+              cht.id,
+              {
+                text: `https://termai.cc\n` + majorText,
+                linkPreview,
+              },
+              { quoted: cht }
+            );
+          }
+
+          let rawUrls = updateInfo.files || [];
+          let fols = await (Exp.func?.getDirectoriesRecursive?.() || []);
+          let urlPath = rawUrls
+            .map((link) => {
+              try {
+                const { pathname, host } = new URL(link);
+                let f = (
+                  host === 'raw.githubusercontent.com'
+                    ? pathname.split('heads/')[1]
+                    : pathname
+                )
+                  ?.split('/')
+                  ?.slice(1)
+                  ?.join('/')
+                  ?.split('/');
+                const filename = f.slice(-1)[0];
+                if (!filename) return null;
+                const _path = f.slice(0, -1).join('/');
+
+                for (const folder of fols) {
+                  const folderPath = folder.split('./')[1].slice(0, -1);
+                  if (folderPath.includes(_path) && _path) {
+                    return [link, `${folder}${filename}`];
+                  }
+                  if (
+                    ['index.js', 'package', 'readme.md'].some((a) =>
+                      filename.includes(a)
+                    )
+                  ) {
+                    return [link, `./${filename}`];
+                  }
+                }
+                return null;
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean);
+
+          let fileTree = urlPath.map(([url, fpath]) => ({
+            type: fs.existsSync(fpath) ? 'modified' : 'new',
+            path: fpath,
+            url
+          }));
+
+          let text = Data.infos?.updateNotify
+            ? Data.infos.updateNotify({
+                version: updateInfo.latestVersion,
+                currentVersion: updateInfo.currentVersion,
+                pendingCount: updateInfo.pendingReleasesCount,
+                files: rawUrls,
+                fileTree,
+                changelog: updateInfo.changelogs,
+              })
+            : `> 🔔 *UPDATE NOTIFICATION*\n\n` +
+              `• *Versi Baru:* *v${updateInfo.latestVersion}* (Saat ini: *v${updateInfo.currentVersion || '1.0.0'}*)\n` +
+              (updateInfo.pendingReleasesCount > 1 ? `• *Total Rilis Kumulatif:* ${updateInfo.pendingReleasesCount} update\n` : '') +
+              `• *Total Berkas:* ${rawUrls.length} file unik\n\n` +
+              (updateInfo.changelogs ? `📋 *Catatan Perubahan:*\n${updateInfo.changelogs}\n\n` : '') +
+              `📂 *File Changed:*\n${fileTree.map((f, i) => `${i === fileTree.length - 1 ? '└──' : '├──'} \`${f.type}\`: ${f.path}`).join('\n')}\n\n` +
+              `💡 *CARA MENERAPKAN PEMBARUAN:*\n` +
+              `• Balas (quote / reply) pesan ini dengan *y* saat bot sedang aktif/online.\n` +
+              `• Perintah tetap bekerja meski bot sempat di-restart atau dalam jangka waktu lama.\n` +
+              `• Alternatif update manual: Ketik *.checkupdate* lalu balas *y*, atau gunakan *.update <link>*.\n` +
+              `• Ketik *n* atau *batal* untuk membatalkan update.`;
+
+          let linkPreview = await getUpdateLinkPreview();
+          let sentMsg = await Exp.sendMessage(
+            cht.id,
+            {
+              text: `https://termai.cc\n` + text,
+              linkPreview,
+            },
+            { quoted: cht }
+          );
+
+          if (sentMsg?.key?.id && rawUrls.length > 0) {
+            Data.quotedQuestionCmd ??= {};
+            Data.quotedQuestionCmd[sentMsg.key.id] = {
+              key: { id: sentMsg.key.id },
+              emit: `update ${rawUrls.join(' ')}`,
+              exp: Date.now() + 2 * 24 * 60 * 60 * 1000,
+              accepts: ['y', 'ya', 'yes'],
+              Keys: { y: '', ya: '', yes: '' },
+              use: 0,
+              maxUse: 1,
+            };
+            Data.pendingReleaseVersion = updateInfo.latestVersion;
+          }
+          return sentMsg;
+        } catch (err) {
+          return cht.reply(`❌ *Gagal memeriksa update:* ${err.message}`);
+        }
+      }
+
+      let isConfirm = ['y', 'ya', 'yes'].includes(input);
+      let isCancel = ['n', 'no', 'batal', 'cancel'].includes(input);
+
+      Data.pendingUpdate ??= {};
+      let pending = Data.pendingUpdate[cht.sender] || memories.getItem(cht.sender, 'pendingUpdate');
+
+      if (isCancel) {
+        if (pending) {
+          delete Data.pendingUpdate[cht.sender];
+          memories.delItem(cht.sender, 'pendingUpdate');
+          return cht.reply(Data.infos.owner.updateCancelled);
+        }
+      }
+
+      if (isConfirm) {
+        let urlPath = pending?.urlPath;
+
+        if (!urlPath || !Array.isArray(urlPath) || urlPath.length === 0) {
+          try {
+            await cht.reply('⏳ *Memeriksa dan menyiapkan pembaruan sistem...*');
+            let updateInfo = await global.checkUpdate();
+            if (!updateInfo || !updateInfo.hasUpdate) {
+              return cht.reply(`✅ *Bot Anda sudah menggunakan versi terbaru (v${updateInfo?.currentVersion || cfg.version || '1.0.0'}).*`);
+            }
+            let rawUrls = updateInfo.files || [];
+            let fols = await (Exp.func?.getDirectoriesRecursive?.() || []);
+            urlPath = rawUrls
+              .map((link) => {
+                try {
+                  const { pathname, host } = new URL(link);
+                  let f = (
+                    host === 'raw.githubusercontent.com'
+                      ? pathname.split('heads/')[1]
+                      : pathname
+                  )
+                    ?.split('/')
+                    ?.slice(1)
+                    ?.join('/')
+                    ?.split('/');
+                  const filename = f.slice(-1)[0];
+                  if (!filename) return null;
+                  const _path = f.slice(0, -1).join('/');
+
+                  for (const folder of fols) {
+                    const folderPath = folder.split('./')[1].slice(0, -1);
+                    if (folderPath.includes(_path) && _path) {
+                      return [link, `${folder}${filename}`];
+                    }
+                    if (
+                      ['index.js', 'package', 'readme.md'].some((a) =>
+                        filename.includes(a)
+                      )
+                    ) {
+                      return [link, `./${filename}`];
+                    }
+                  }
+                  return null;
+                } catch {
+                  return null;
+                }
+              })
+              .filter(Boolean);
+          } catch (e) {
+            return cht.reply(`❌ *Gagal memuat sesi update:* ${e.message}`);
+          }
+        }
+
+        if (!urlPath || urlPath.length === 0) {
+          return cht.reply('❌ Tidak ada berkas pembaruan yang dapat diproses saat ini.');
+        }
+
+        delete Data.pendingUpdate[cht.sender];
+        memories.delItem(cht.sender, 'pendingUpdate');
+
+        await cht.reply('Updating...');
+        let changed = `*📂File Changed:*`;
+        let modifed = '';
+        let newfile = '';
+        let failed = '\n*❗Failed:*';
+        let text;
+        let i = 0;
+
+        for (let [url, fpath] of urlPath) {
+          if (i === Data.spinner.length) i = 0;
+          let res = await fetch(url);
+          if (!res.ok) {
+            failed += `\n- ${url}\n> Failed to fetch url`;
+            continue;
+          }
+          let isExists = fs.existsSync(fpath);
+          if (isExists) {
+            modifed += `\n- \`modifed\`: ${fpath}`;
+          } else {
+            newfile += `\n- \`new\`: ${fpath}`;
+          }
+          if (path.basename(fpath) === 'global.js') {
+            let oldContent = fs.existsSync(fpath)
+              ? fs.readFileSync(fpath, 'utf8')
+              : '';
+            let oldMongo = '';
+
+            let match = oldContent.match(
+              /let\s+mongoURI\s*=\s*['"`](.*?)['"`]/
+            );
+            if (match) {
+              oldMongo = match[1];
+            }
+
+            let buff = await res.text();
+
+            if (oldMongo) {
+              buff = buff.replace(
+                /let\s+mongoURI\s*=\s*['"`](.*?)['"`]\s*;/,
+                `let mongoURI = '${oldMongo}';`
+              );
+            }
+
+            fs.writeFileSync(fpath, buff);
+          } else {
+            let buff = await res.text();
+            fs.writeFileSync(fpath, buff);
+          }
+
+          text = `*${Data.spinner[i++]}[ 🛠️ ] UPDATE*\n\n${changed}${modifed}${newfile}\n`;
+          await cht.edit(text, keys[sender]);
+          await sleep(750);
+        }
+
+        try {
+          let targetVer = pending?.latestVersion || updateInfo?.latestVersion || Data.pendingReleaseVersion;
+          if (!targetVer) {
+            let chk = await global.checkUpdate?.().catch(() => null);
+            if (chk?.latestVersion) targetVer = chk.latestVersion;
+          }
+          if (targetVer) {
+            let pkgPath = './package.json';
+            if (fs.existsSync(pkgPath)) {
+              let pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+              if (pkgJson.version !== targetVer) {
+                pkgJson.version = targetVer;
+                fs.writeFileSync(pkgPath, JSON.stringify(pkgJson, null, 2));
+              }
+            }
+          }
+        } catch {}
+
+        if (failed.length > 12) text += failed;
+        await cht.edit(text, keys[sender]);
+        return cht.reply(Data.infos.owner.updateSuccess);
+      }
+
+      urls ??= [];
+      if (urls.length === 0 && cht.q) {
+        urls = func.parseLink(cht.q);
+      }
+
+      if (!urls || urls.length === 0) {
+        return cht.question(Data.infos.isUrl, {
+          emit: 'update',
+          accepts: [],
+          exp: Date.now() + 60000,
+        });
+      }
+
+      let allowedFormats = [
+        'c.termai.cc',
+        'cdn.xtermai.xyz',
+        'pastebin.com',
+        'raw.githubusercontent.com',
+      ];
+
+      let isAllowed = urls.some((url) =>
+        allowedFormats.some((fmt) =>
+          url.toLowerCase().includes(fmt.toLowerCase())
+        )
+      );
+
+      if (!isAllowed) {
+        return cht.reply(
+          func.tagReplacer(Data.infos.isFormatsUrl, {
+            formats: allowedFormats.join('\n- '),
+          })
+        );
+      }
+
       if (urls[0].includes('pastebin.com') || urls[0].includes('c.termai.cc')) {
         let _text = await fetch(
           urls[0].replace(
@@ -1425,17 +2105,15 @@ export default async function on({ cht, Exp, store, ev, is }) {
             )
           : [];
       }
+
       let fols = await getDirectoriesRecursive();
-      await cht.reply('Updating...');
-      let changed = `*📂File Changed:*`;
-      let modifed = '';
-      let newfile = '';
       let failed = '\n*❗Failed:*';
       let urlPath = urls
         .map((link) => {
           const { pathname, host } = new URL(link);
           let isValidHost = [
             'c.termai.cc',
+            'cdn.xtermai.xyz',
             'raw.githubusercontent.com',
           ].includes(host);
           if (!isValidHost) {
@@ -1484,55 +2162,66 @@ export default async function on({ cht, Exp, store, ev, is }) {
         })
         .filter(Boolean);
 
-      let text;
-      let i = 0;
-      for (let [url, fpath] of urlPath) {
-        if (i === Data.spinner.length) i = 0;
-        let res = await fetch(url);
-        if (!res.ok) {
-          failed += `\n- ${url}\n> Failed to fetch url`;
-          continue;
-        }
-        let isExists = fs.existsSync(fpath);
-        if (isExists) {
-          modifed += `\n- \`modifed\`: ${fpath}`;
-        } else {
-          newfile += `\n- \`new\`: ${fpath}`;
-        }
-        if (path.basename(fpath) === 'global.js') {
-          let oldContent = fs.existsSync(fpath)
-            ? fs.readFileSync(fpath, 'utf8')
-            : '';
-          let oldMongo = '';
-
-          let match = oldContent.match(/let\s+mongoURI\s*=\s*['"`](.*?)['"`]/);
-          if (match) {
-            oldMongo = match[1];
-          }
-
-          let buff = await res.text();
-
-          if (oldMongo) {
-            buff = buff.replace(
-              /let\s+mongoURI\s*=\s*['"`](.*?)['"`]\s*;/,
-              `let mongoURI = '${oldMongo}';`
-            );
-          }
-
-          fs.writeFileSync(fpath, buff);
-        } else {
-          let buff = await res.text();
-          fs.writeFileSync(fpath, buff);
-        }
-
-        text = `*${Data.spinner[i++]}[ 🛠️ ] UPDATE*\n\n${changed}${modifed}${newfile}\n`;
-        await cht.edit(text, keys[sender]);
-        await sleep(750);
+      if (urlPath.length === 0) {
+        return cht.reply(
+          '❌ Tidak ada berkas valid yang ditemukan dari URL yang diberikan!' +
+            (failed.length > 12 ? failed : '')
+        );
       }
 
-      if (failed.length > 12) text += failed;
-      await cht.edit(text, keys[sender]);
-      cht.reply('Success ✅');
+      let files = [];
+      let recentFiles = [];
+      let now = Date.now();
+
+      for (let [url, fpath] of urlPath) {
+        let isExists = fs.existsSync(fpath);
+        if (isExists) {
+          files.push({ type: 'modified', path: fpath });
+          try {
+            let stat = fs.statSync(fpath);
+            let diffMs = now - stat.mtimeMs;
+            if (diffMs < 86400000) {
+              let sec = Math.floor(diffMs / 1000);
+              let min = Math.floor(sec / 60);
+              let hr = Math.floor(min / 60);
+              let timeAgo =
+                hr > 0
+                  ? `${hr} jam ${min % 60} menit yang lalu`
+                  : min > 0
+                    ? `${min} menit yang lalu`
+                    : `${sec} detik yang lalu`;
+              recentFiles.push({ path: fpath, timeAgo });
+            }
+          } catch {}
+        } else {
+          files.push({ type: 'new', path: fpath });
+        }
+      }
+
+      Data.pendingUpdate[cht.sender] = {
+        urlPath,
+        exp: Date.now() + 120000,
+      };
+
+      let previewTpl = Data.infos.owner.updatePreview({ files, recentFiles });
+      return cht.question(
+        previewTpl.body,
+        {
+          emit: 'update',
+          accepts: ['y', 'ya', 'yes', 'n', 'no', 'batal', 'cancel'],
+          Keys: {
+            y: 'y',
+            ya: 'y',
+            yes: 'y',
+            n: 'n',
+            no: 'n',
+            batal: 'n',
+            cancel: 'n',
+          },
+          exp: Date.now() + 120000,
+        },
+        { footer: previewTpl.footer }
+      );
     }
   );
 
@@ -1649,6 +2338,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let res = (await store.loadMessage(id, cht.quoted.stanzaId)).message;
       Data.response[args.toLowerCase()?.replace(/ /g, '')] = res;
       cht.reply(
@@ -1665,6 +2356,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       delete Data.response[args.toLowerCase()?.replace(/ /g, '')];
       cht.reply(`Success delete response "*${args}*"`);
     }
@@ -1678,6 +2371,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let res = Object.keys(Data.response || {});
       let t = 0;
       let tx = '*LIST RESPONSE*\n';
@@ -1704,6 +2399,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let { quoted, type } = ev.getMediaType();
       Data.setCmd[
         (quoted ? cht.quoted : cht)[type].fileSha256.toString().to('utf16le')
@@ -1725,6 +2422,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let { quoted, type } = ev.getMediaType();
       let cmd =
         Data.setCmd[
@@ -1752,6 +2451,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async ({ urls }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       cfg.gcurl ??= [];
       let url = urls.map((a) => `- ${a}`).join('\n');
       if (cht.cmd == 'addlinkgc') {
@@ -1773,6 +2474,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       cfg.gcurl ??= [];
       let url =
         cfg.gcurl.length > 0
@@ -1794,6 +2497,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       },
     },
     async () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       try {
         await Exp.groupAcceptInvite(
           cht.q.split('/').slice(-1)?.[0]?.split('?')?.[0]
@@ -1813,6 +2518,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       isOwner: true,
     },
     async ({ args, urls }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       try {
         let y = [
           'y',
@@ -1913,11 +2620,11 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let tx = 'Mengecek semua nama group yang terdaftar...';
       await cht.reply(tx);
-      let gc = Object.keys(Data.preferences).filter((a) =>
-        a.includes(from.group)
-      );
+      let gc = Object.keys(preferences).filter((a) => a.includes(from.group));
       let g = `*LIST GROUP*\n`;
       let perStep = Math.ceil(gc.length / 5);
 
@@ -1946,6 +2653,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async ({ args, cht }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let act = {
         y: `✅ Berhasil mereset semua *energy user* menjadi default (⚡${cfg.first.energy}).`,
         n: '❌ Ok gajadi, energi tidak direset.',
@@ -1990,6 +2699,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       args: 'Mau liat list user apa sayang? user premium, user afk atau user banned',
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let now = Date.now();
       let mode = args.includes('afk')
         ? 'afk'
@@ -2109,6 +2820,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       args: 'Mau ambil code events apa?',
     },
     async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       let cmd = args.trim().toLowerCase();
       let event = Data.events[cmd];
       let didYouMean =
@@ -2150,6 +2863,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     async () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       await Exp.updateBlockStatus(cht.mention[0], cht.cmd);
       cht.reply(
         `Success mem${cht.cmd == 'block' ? '' : 'buka '}blokir user ${cht.mention[0].split('@')[0]}✅`
@@ -2165,6 +2880,8 @@ export default async function on({ cht, Exp, store, ev, is }) {
       tag: 'owner',
     },
     () => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
       const d = Data.ch_reaction || {};
 
       const text =
@@ -2264,6 +2981,670 @@ export default async function on({ cht, Exp, store, ev, is }) {
               : 'Belum pernah')
           : '');
       cht.reply(text);
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['q', 'quoted', 'qpc', 'quotedpc'],
+      listmenu: ['q', 'qpc'],
+      isOwner: true,
+      isQuoted:
+        '*Reply pesannya!*\n' +
+        'Sertakan juga angka untuk menentukan seberapa dalam quoted diambil.\n' +
+        'Contoh: .qpc 2',
+
+      tag: 'owner',
+    },
+    async ({ args }) => {
+      if (is?.jadibot || Exp?.isJadibot)
+        return cht.reply('🚫 Fitur ini hanya dapat diakses melalui Bot Utama!');
+      function deepFind(o, key = 'contextInfo', max = 5) {
+        if (!o || typeof o !== 'object' || !max) return null;
+        if (o[key]) return o[key];
+        for (const k in o) {
+          const r = deepFind(o[k], key, max - 1);
+          if (r) return r;
+        }
+        return null;
+      }
+
+      let jid = cht.cmd.includes('pc') ? cht.sender : cht.id;
+      let current = await store.loadMessage(cht.id, cht.quoted?.key?.id);
+
+      let depth = Number(args) || 100;
+      let deep = 0;
+      let stopped = 'max-depth';
+      let lastKey = current?.key;
+
+      for (; deep < depth && current; ) {
+        deep++;
+        const ctx = deepFind(current.message, 'key', 4);
+
+        if (!ctx?.stanzaId || !ctx?.participant) {
+          stopped = 'no-quoted';
+          break;
+        }
+
+        const next = await store.loadMessage(ctx.participant, ctx.stanzaId);
+        if (!next) {
+          stopped = 'end-quoted';
+          break;
+        }
+
+        current = next;
+        lastKey = next.key;
+      }
+      await Exp.relayMessage(jid, current.message, {});
+      await Exp.sendMessage(
+        jid,
+        {
+          text:
+            ` 🔍 *Quoted Info*\n` +
+            ` • Requested Depth : ${depth}\n` +
+            ` • Reached Depth : ${deep}\n` +
+            ` • Stop Reason : ${stopped}\n` +
+            ` • Final ID : ${lastKey?.id}\n\n` +
+            `\`CODE\`:\n` +
+            infos.others.readMore +
+            JSON.stringify(current.message, 0, 2),
+        },
+        { quoted: current.message }
+      );
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['rdp'],
+      listmenu: ['rdp'],
+      isOwner: true,
+      tag: 'owner',
+    },
+    async ({ args }) => {
+      const { exec } = await 'child_process'.import();
+      const action = (args || '').trim().toLowerCase();
+      if (
+        !['on', 'off', 'start', 'stop', 'status', 'detail'].includes(action)
+      ) {
+        return cht.reply(infos.owner.rdpHelp);
+      }
+      exec('/usr/local/bin/rdp ' + action, (err, stdout, stderr) => {
+        let res = (stdout || stderr || 'Done').trim();
+        cht.reply(res);
+      });
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['sendch', 'upch'],
+      listmenu: ['sendch'],
+      isOwner: true,
+      tag: 'owner',
+    },
+    async ({ args }) => {
+      let customJid = null;
+      let textArgs = (args || '').trim();
+      let firstWord = textArgs.split(/\s+/)[0] || '';
+
+      if (
+        firstWord.endsWith('@newsletter') ||
+        (firstWord.startsWith('120363') && /^\d+$/.test(firstWord))
+      ) {
+        customJid = firstWord.endsWith('@newsletter')
+          ? firstWord
+          : firstWord + '@newsletter';
+        textArgs = textArgs.slice(firstWord.length).trim();
+      }
+
+      let chJid = customJid || cfg.menu?.chId?.newsletterJid || cfg.chId?.newsletterJid;
+      let chName = customJid ? chJid : (cfg.menu?.chId?.newsletterName || cfg.chId?.newsletterName || chJid);
+      if (!chJid) return cht.reply(infos.owner.noChId);
+
+      let getChLink = async (jid) => {
+        try {
+          if (cfg.menu?.chId?.newsletterJid === jid && cfg.menu?.chId?.invite) {
+            return `https://whatsapp.com/channel/${cfg.menu.chId.invite}`;
+          }
+          let meta = await Exp.newsletterMetadata('jid', jid).catch(() => null);
+          let invite = meta?.thread_metadata?.invite || meta?.invite;
+          if (invite) {
+            if (cfg.menu?.chId?.newsletterJid === jid) {
+              cfg.menu.chId.invite = invite;
+            }
+            return `https://whatsapp.com/channel/${invite}`;
+          }
+        } catch {}
+        return null;
+      };
+
+      if (is.quoted) {
+        let qType = cht.quoted.type;
+        if (['image', 'video'].includes(qType)) {
+          let buffer = await cht.quoted.download();
+          let isPtv = Boolean(cht.quoted.video?.ptv || cht.quoted.mtype === 'ptvMessage');
+          if (isPtv) {
+            await Exp.sendMessage(chJid, {
+              video: buffer,
+              ptv: true,
+            });
+            let chLink = await getChLink(chJid);
+            return cht.reply(infos.owner.sendchSuccess(chName, 'Video Note (PTV)', chLink));
+          }
+          let caption = textArgs || cht.quoted.text || '';
+          await Exp.sendMessage(chJid, {
+            [qType]: buffer,
+            caption: caption || undefined,
+          });
+          let chLink = await getChLink(chJid);
+          return cht.reply(infos.owner.sendchSuccess(chName, qType === 'image' ? 'Gambar' : 'Video', chLink));
+        }
+
+        if (qType === 'audio') {
+          let buffer = await cht.quoted.download();
+          await Exp.sendMessage(chJid, {
+            audio: buffer,
+            ptt: true,
+          });
+          let chLink = await getChLink(chJid);
+          return cht.reply(infos.owner.sendchSuccess(chName, 'Voice Note (PTT)', chLink));
+        }
+
+        if (qType === 'sticker') {
+          let buffer = await cht.quoted.download();
+          await Exp.sendMessage(chJid, { sticker: buffer });
+          let chLink = await getChLink(chJid);
+          return cht.reply(infos.owner.sendchSuccess(chName, 'Stiker', chLink));
+        }
+
+        if (qType === 'document') {
+          let buffer = await cht.quoted.download();
+          await Exp.sendMessage(chJid, {
+            document: buffer,
+            mimetype: cht.quoted.document?.mimetype || 'application/octet-stream',
+            fileName: cht.quoted.document?.fileName || 'document',
+          });
+          let chLink = await getChLink(chJid);
+          return cht.reply(infos.owner.sendchSuccess(chName, 'Dokumen', chLink));
+        }
+
+        if (qType === 'conversation' || qType === 'extendedTextMessage') {
+          let textToSend = textArgs || cht.quoted.text || '';
+          if (textToSend) {
+            await Exp.sendMessage(chJid, { text: textToSend });
+            let chLink = await getChLink(chJid);
+            return cht.reply(infos.owner.sendchSuccess(chName, 'Teks', chLink));
+          }
+        }
+
+        let quotedRaw =
+          cht?.message?.[cht.type]?.contextInfo?.quotedMessage ||
+          cht.quoted?.message ||
+          cht.quoted;
+        if (!quotedRaw && cht.quoted.stanzaId) {
+          try {
+            let loaded = await store.loadMessage(id, cht.quoted.stanzaId);
+            if (loaded?.message) {
+              quotedRaw = loaded.message;
+            }
+          } catch {}
+        }
+
+        if (quotedRaw) {
+          await Exp.relayMessage(chJid, quotedRaw, {});
+          let chLink = await getChLink(chJid);
+          return cht.reply(infos.owner.sendchSuccess(chName, 'Relay Message', chLink));
+        }
+
+        let textToSend = textArgs || cht.quoted.text || '';
+        if (textToSend) {
+          await Exp.sendMessage(chJid, { text: textToSend });
+          let chLink = await getChLink(chJid);
+          return cht.reply(infos.owner.sendchSuccess(chName, 'Teks', chLink));
+        }
+      }
+
+      if (textArgs) {
+        await Exp.sendMessage(chJid, { text: textArgs });
+        let chLink = await getChLink(chJid);
+        return cht.reply(infos.owner.sendchSuccess(chName, 'Teks', chLink));
+      }
+
+      return cht.reply(infos.owner.sendchHelp);
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['playch', 'playvnch'],
+      listmenu: ['playch'],
+      isOwner: true,
+      tag: 'owner',
+    },
+    async ({ args }) => {
+      let customJid = null;
+      let textArgs = (args || '').trim();
+      let firstWord = textArgs.split(/\s+/)[0] || '';
+
+      if (
+        firstWord.endsWith('@newsletter') ||
+        (firstWord.startsWith('120363') && /^\d+$/.test(firstWord))
+      ) {
+        customJid = firstWord.endsWith('@newsletter')
+          ? firstWord
+          : firstWord + '@newsletter';
+      }
+
+      let chJid =
+        customJid ||
+        cfg.menu?.chId?.newsletterJid ||
+        cfg.chId?.newsletterJid;
+      let chName = customJid
+        ? chJid
+        : cfg.menu?.chId?.newsletterName ||
+          cfg.chId?.newsletterName ||
+          chJid;
+      if (!chJid) return cht.reply(infos.owner.noChId);
+
+      let isAudioQuoted =
+        is.quoted &&
+        (cht.quoted.type === 'audio' ||
+          cht.quoted.mimetype?.includes('audio') ||
+          cht.quoted.ptt);
+
+      if (!isAudioQuoted) {
+        return cht.reply(infos.owner.playchHelp);
+      }
+
+      let buffer = await cht.quoted.download();
+      if (!buffer) return cht.reply('❌ Gagal mengunduh audio!');
+
+      await Exp.sendMessage(chJid, {
+        audio: buffer,
+        ptt: true,
+      });
+
+      let getChLink = async (jid) => {
+        try {
+          if (cfg.menu?.chId?.newsletterJid === jid && cfg.menu?.chId?.invite) {
+            return `https://whatsapp.com/channel/${cfg.menu.chId.invite}`;
+          }
+          let meta = await Exp.newsletterMetadata('jid', jid).catch(() => null);
+          let invite = meta?.thread_metadata?.invite || meta?.invite;
+          if (invite) {
+            if (cfg.menu?.chId?.newsletterJid === jid) {
+              cfg.menu.chId.invite = invite;
+            }
+            return `https://whatsapp.com/channel/${invite}`;
+          }
+        } catch {}
+        return null;
+      };
+
+      let chLink = await getChLink(chJid);
+      return cht.reply(
+        infos.owner.playchSuccess(chName, 'Voice Note (PTT)', chLink)
+      );
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['ticket', 'report'],
+      listmenu: ['ticket'],
+      tag: 'owner',
+      isOwner: true,
+      isCoOwner: false,
+    },
+    async () => {
+      const getTicketLinkPreview = async () => {
+        if (!keys['ticket_lp_media']) {
+          try {
+            let rawBuf = await Exp.func.getBuffer('https://c.termai.cc/i135/fZ6dc.png');
+            let resMedia = await prepareWAMessageMedia(
+              { image: rawBuf },
+              { upload: Exp.waUploadToServer, mediaTypeOverride: 'thumbnail-link' }
+            );
+            if (resMedia?.imageMessage) {
+              keys['ticket_lp_media'] = resMedia.imageMessage;
+              keys['ticket_lp_thumb'] = rawBuf;
+            }
+          } catch {}
+        }
+        let imgMsg = keys['ticket_lp_media'];
+        return {
+          'matched-text': 'https://termai.cc',
+          title: '🎫 Helpdesk & Developer Support',
+          description: 'Termai Support & Developer Ticket System',
+          jpegThumbnail: imgMsg?.jpegThumbnail
+            ? Buffer.from(imgMsg.jpegThumbnail)
+            : keys['ticket_lp_thumb'] || undefined,
+          highQualityThumbnail: imgMsg
+            ? {
+                ...imgMsg,
+                width: 1280,
+                height: 720,
+              }
+            : undefined,
+        };
+      };
+
+      let q = (cht.q || '').trim();
+      if (!q || q === 'help' || q === 'menu') {
+        let helpTpl = infos.owner.ticketHelp;
+        let text = typeof helpTpl === 'object' && helpTpl?.body ? helpTpl.body : helpTpl;
+        let linkPreview = await getTicketLinkPreview();
+        return Exp.sendMessage(
+          cht.id,
+          {
+            text: `https://termai.cc\n` + text,
+            linkPreview,
+          },
+          { quoted: cht }
+        );
+      }
+
+      let lowerQ = q.toLowerCase();
+
+      if (q === 'list' || q === 'my') {
+        let senderNumber = String(cht.sender || '').replace(/[^0-9]/g, '');
+        try {
+          let tickets = await global.listTickets(senderNumber);
+          if (!tickets || tickets.length === 0) {
+            return cht.reply(infos.owner.ticketListEmpty);
+          }
+          let text = infos.owner.ticketList(tickets);
+          let linkPreview = await getTicketLinkPreview();
+          return Exp.sendMessage(
+            cht.id,
+            {
+              text: `https://termai.cc\n` + text,
+              linkPreview,
+            },
+            { quoted: cht }
+          );
+        } catch (e) {
+          return cht.reply(infos.owner.ticketFailed(e.message));
+        }
+      }
+
+      if (lowerQ.startsWith('check ') || lowerQ.startsWith('status ') || lowerQ.startsWith('info ') || /^#?tck-[a-z0-9]+/i.test(q)) {
+        let ticketId = q.replace(/^(check|status|info)\s+/i, '').trim();
+        try {
+          let ticket = await global.getTicket(ticketId);
+          let text = infos.owner.ticketDetail(ticket);
+          let linkPreview = await getTicketLinkPreview();
+          return Exp.sendMessage(
+            cht.id,
+            {
+              text: `https://termai.cc\n` + text,
+              linkPreview,
+            },
+            { quoted: cht }
+          );
+        } catch (e) {
+          return cht.reply(infos.owner.ticketFailed(e.message));
+        }
+      }
+
+      if (lowerQ.startsWith('close ') || lowerQ.startsWith('tutup ')) {
+        let ticketId = q.replace(/^(close|tutup)\s+/i, '').trim();
+        try {
+          let res = await global.updateTicketUser({ ticketId, actionType: 'close' });
+          let linkPreview = await getTicketLinkPreview();
+          return Exp.sendMessage(
+            cht.id,
+            {
+              text: `https://termai.cc\n` + infos.owner.ticketCloseSuccess(res.ticketId || ticketId),
+              linkPreview,
+            },
+            { quoted: cht }
+          );
+        } catch (e) {
+          return cht.reply(infos.owner.ticketFailed(e.message));
+        }
+      }
+
+      if (lowerQ.startsWith('reopen ') || lowerQ.startsWith('buka ')) {
+        let ticketId = q.replace(/^(reopen|buka)\s+/i, '').trim();
+        try {
+          let res = await global.updateTicketUser({ ticketId, actionType: 'reopen' });
+          let linkPreview = await getTicketLinkPreview();
+          return Exp.sendMessage(
+            cht.id,
+            {
+              text: `https://termai.cc\n` + infos.owner.ticketReopenSuccess(res.ticketId || ticketId),
+              linkPreview,
+            },
+            { quoted: cht }
+          );
+        } catch (e) {
+          return cht.reply(infos.owner.ticketFailed(e.message));
+        }
+      }
+
+      if (lowerQ.startsWith('reply ') || lowerQ.startsWith('balas ')) {
+        let cleanText = q.replace(/^(reply|balas)\s+/i, '').trim();
+        let ticketId = cleanText.includes('|')
+          ? cleanText.split('|')[0].trim()
+          : cleanText.split(/\s+/)[0].trim();
+        let replyText = cleanText.includes('|')
+          ? cleanText.split('|').slice(1).join('|').trim()
+          : cleanText.split(/\s+/).slice(1).join(' ').trim();
+
+        if (!ticketId || !replyText) {
+          return cht.reply('Format salah. Gunakan: .ticket reply <ID_Tiket> | <pesan>');
+        }
+
+        try {
+          let res = await global.updateTicketUser({ ticketId, actionType: 'reply', replyText });
+          let linkPreview = await getTicketLinkPreview();
+          return Exp.sendMessage(
+            cht.id,
+            {
+              text: `https://termai.cc\n` + infos.owner.ticketReplySuccess(res.ticketId || ticketId),
+              linkPreview,
+            },
+            { quoted: cht }
+          );
+        } catch (e) {
+          return cht.reply(infos.owner.ticketFailed(e.message));
+        }
+      }
+
+      let category = 'bug';
+      let subject = '';
+      let message = '';
+      const validCategories = ['bug', 'error', 'feature', 'question', 'account', 'general'];
+
+      if (q.includes('|')) {
+        let parts = q.split('|').map((s) => s.trim()).filter(Boolean);
+        if (parts.length >= 3) {
+          let first = parts[0].toLowerCase();
+          category = validCategories.includes(first) ? first : 'bug';
+          subject = parts[1];
+          message = parts.slice(2).join(' | ');
+        } else if (parts.length === 2) {
+          let headTokens = parts[0].split(/\s+/);
+          let firstToken = headTokens[0].toLowerCase();
+          if (validCategories.includes(firstToken)) {
+            category = firstToken;
+            subject = headTokens.slice(1).join(' ') || parts[1];
+            message = parts[1];
+          } else {
+            category = 'bug';
+            subject = parts[0];
+            message = parts[1];
+          }
+        } else {
+          message = parts[0];
+          subject = message.slice(0, 40);
+        }
+      } else {
+        let tokens = q.split(/\s+/);
+        let firstToken = tokens[0].toLowerCase();
+        if (validCategories.includes(firstToken) && tokens.length > 1) {
+          category = firstToken;
+          message = tokens.slice(1).join(' ');
+          subject = message.slice(0, 40) + (message.length > 40 ? '...' : '');
+        } else {
+          category = 'bug';
+          message = q;
+          subject = q.slice(0, 40) + (q.length > 40 ? '...' : '');
+        }
+      }
+
+      if (!subject) subject = message.slice(0, 40) + (message.length > 40 ? '...' : '') || 'Laporan Tiket';
+      if (!message) message = subject;
+
+      await cht.reply(infos.owner.ticketSending);
+
+      try {
+        let senderNumber = String(cht.sender || '').replace(/[^0-9]/g, '');
+        let res = await global.createTicket({
+          category,
+          subject,
+          message,
+          senderNumber,
+          senderJid: cht.sender,
+        });
+
+        let linkPreview = await getTicketLinkPreview();
+        return Exp.sendMessage(
+          cht.id,
+          {
+            text: `https://termai.cc\n` + infos.owner.ticketSuccess(res.ticketId, category, subject),
+            linkPreview,
+          },
+          { quoted: cht }
+        );
+      } catch (err) {
+        return cht.reply(infos.owner.ticketFailed(err.message));
+      }
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['dm', 'chatadmin'],
+      tag: 'owner',
+      isOwner: true,
+      isCoOwner: false,
+    },
+    async () => {
+      let rawText = cht.q || cht.msg || '';
+      let q = rawText.trim().toLowerCase();
+      if (['end', 'close', 'stop', '.dm end', '.dm close'].includes(q)) {
+        if (!Data.activeDmSession) {
+          return cht.reply('Tidak ada sesi obrolan aktif saat ini.');
+        }
+        await global.sendDmEnd({ sessionId: Data.activeDmSession.sessionId });
+        Data.activeDmSession = null;
+        let tpl = infos.owner.dmClosed;
+        return Exp.sendMessage(cht.id, { text: tpl.body || tpl, footer: tpl.footer }, { quoted: cht });
+      }
+
+      if (Data.pendingDmSession) {
+        if (['y', 'ya', 'yes', 'accept', 'ok', 'oke'].includes(q)) {
+          await global.sendDmConsent({ sessionId: Data.pendingDmSession.sessionId, accepted: true });
+          Data.activeDmSession = { sessionId: Data.pendingDmSession.sessionId, active: true };
+          Data.pendingDmSession = null;
+          let tpl = infos.owner.dmAccepted;
+          return Exp.sendMessage(cht.id, { text: tpl.body || tpl, footer: tpl.footer }, { quoted: cht });
+        }
+        if (['n', 'no', 'tidak', 'reject', 'batal', 'cancel'].includes(q)) {
+          await global.sendDmConsent({ sessionId: Data.pendingDmSession.sessionId, accepted: false });
+          Data.pendingDmSession = null;
+          let tpl = infos.owner.dmRejected;
+          return Exp.sendMessage(cht.id, { text: tpl.body || tpl, footer: tpl.footer }, { quoted: cht });
+        }
+      }
+
+      if (Data.activeDmSession) {
+        if (rawText) {
+          await global.sendDmReply({ sessionId: Data.activeDmSession.sessionId, text: rawText });
+          return cht.reply('✅ *Pesan diteruskan ke Admin Termai.*');
+        }
+        let tpl = infos.owner.dmAccepted;
+        return Exp.sendMessage(cht.id, { text: tpl.body || tpl, footer: tpl.footer }, { quoted: cht });
+      }
+
+      return cht.reply('Belum ada sesi obrolan aktif dari Admin Termai.');
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['infoupdate', 'updateinfo', 'detailupdate'],
+      listmenu: ['infoupdate'],
+      tag: 'owner',
+      isOwner: true,
+      isCoOwner: false,
+    },
+    async () => {
+      let tpl = infos.owner.infoUpdateHelp;
+      let text = typeof tpl === 'object' && tpl?.body ? tpl.body : tpl;
+      let linkPreview = await getUpdateLinkPreview();
+      return Exp.sendMessage(
+        cht.id,
+        {
+          text: `https://termai.cc\n` + text,
+          linkPreview,
+        },
+        { quoted: cht }
+      );
+    }
+  );
+
+  ev.on(
+    {
+      cmd: ['infoticket', 'ticketinfo', 'detailticket'],
+      listmenu: ['infoticket'],
+      tag: 'owner',
+      isOwner: true,
+      isCoOwner: false,
+    },
+    async () => {
+      let tpl = infos.owner.infoTicketHelp;
+      let text = typeof tpl === 'object' && tpl?.body ? tpl.body : tpl;
+      if (!keys['ticket_lp_media']) {
+        try {
+          let rawBuf = await Exp.func.getBuffer('https://c.termai.cc/i135/fZ6dc.png');
+          let resMedia = await prepareWAMessageMedia(
+            { image: rawBuf },
+            { upload: Exp.waUploadToServer, mediaTypeOverride: 'thumbnail-link' }
+          );
+          if (resMedia?.imageMessage) {
+            keys['ticket_lp_media'] = resMedia.imageMessage;
+            keys['ticket_lp_thumb'] = rawBuf;
+          }
+        } catch {}
+      }
+      let imgMsg = keys['ticket_lp_media'];
+      let linkPreview = {
+        'matched-text': 'https://termai.cc',
+        title: '🎫 Helpdesk & Developer Support System',
+        description: 'Termai Support & Developer Ticket Architecture',
+        jpegThumbnail: imgMsg?.jpegThumbnail
+          ? Buffer.from(imgMsg.jpegThumbnail)
+          : keys['ticket_lp_thumb'] || undefined,
+        highQualityThumbnail: imgMsg
+          ? {
+              ...imgMsg,
+              width: 1280,
+              height: 720,
+            }
+          : undefined,
+      };
+      return Exp.sendMessage(
+        cht.id,
+        {
+          text: `https://termai.cc\n` + text,
+          linkPreview,
+        },
+        { quoted: cht }
+      );
     }
   );
 }

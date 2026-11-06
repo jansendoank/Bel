@@ -14,8 +14,9 @@ import './toolkit/set/prototype.js';
 let { initialize } = await './toolkit/set/global.js'.r();
 
 /*!-======[ Mudules Imports ]======-!*/
+const path = 'path'.import();
 const readline = 'readline'.import();
-const fs = 'fs'.import();
+const fs = await 'fs/promises'.import();
 const chalk = 'chalk'.import();
 const baileys = 'baileys'.import();
 const pino = 'pino'.import();
@@ -50,31 +51,58 @@ Data.initialize = (await `${fol[1]}initialize.js`.r()).default;
 
 let logger = pino({ level: 'silent' });
 let store = makeInMemoryStore();
-
-let { state, saveCreds } = await useMultiFileAuthState(session);
 let Func = new func({ store });
 
-const Exp = makeWASocket({
-  logger,
-  version: [
-    2,
-    3000,
-    await fetch(
-      'https://raw.githubusercontent.com/Rifza123/Experimental-Bell/refs/heads/master/version'
-    ).then((a) => a.text()),
-  ],
-  printQRInTerminal: !global.pairingCode,
-  browser: Browsers.ubuntu('Chrome'),
-  auth: state,
-  retryRequestDelayMs: 5000,
-  maxMsgRetryCount: 2,
-  getMessage: async () => undefined,
-  cachedGroupMetadata: (jid) => Func.metadata.get(jid),
-  syncFullHistory: false,
-}); 
+let Exp, Detector;
 
-/*!-======[ Detect File Update ]======-!*/
-detector({ Exp, store });
+global.debug = process.argv.includes('debug') || process.argv.includes('--debug');
+
+if (global.debug) {
+  console.log(chalk.bold.yellow('╔══════════════════════════════════════════════════╗'));
+  console.log(chalk.bold.yellow('║') + chalk.bold.green('   🐞 DEBUG MODE AKTIF: MONITOR PESAN MASUK       ') + chalk.bold.yellow('║'));
+  console.log(chalk.bold.yellow('╚══════════════════════════════════════════════════╝'));
+}
+
+function debugLogMessage(message, type = 'notify') {
+  if (message?.key?.fromMe) return;
+  try {
+    const key = message?.key || {};
+    const remoteJid = key.remoteJid || 'unknown';
+    const isGroup = remoteJid.endsWith('@g.us');
+    const isStatus = remoteJid === 'status@broadcast';
+    const isNewsletter = remoteJid.endsWith('@newsletter');
+    const chatType = isGroup ? 'GROUP' : isStatus ? 'STATUS' : isNewsletter ? 'CHANNEL' : 'PRIVATE';
+    const sender = key.participant || message?.participant || remoteJid;
+    const pushName = message?.pushName || '-';
+    const msgType = getContentType(message?.message) || (message?.messageStubType ? `stubType:${message.messageStubType}` : 'unknown');
+    const msgId = key.id || '-';
+    const ts = message?.messageTimestamp;
+    const timeStr = ts
+      ? new Date((typeof ts === 'object' && ts.low ? ts.low : Number(ts)) * 1000).toLocaleString('id-ID')
+      : new Date().toLocaleString('id-ID');
+
+    console.log(chalk.bold.yellow(`\n┌─── [DEBUG] PESAN MASUK ──────────────────────────────────────────`));
+    console.log(`${chalk.cyan('│')} ${chalk.bold('Event Type')}   : ${chalk.white(type)}`);
+    console.log(`${chalk.cyan('│')} ${chalk.bold('Chat')}         : ${chalk.green(remoteJid)} ${chalk.gray(`(${chatType})`)}`);
+    console.log(`${chalk.cyan('│')} ${chalk.bold('Sender')}       : ${chalk.green(sender)} ${chalk.gray(`[${pushName}]`)}`);
+    console.log(`${chalk.cyan('│')} ${chalk.bold('Message ID')}   : ${chalk.white(msgId)}`);
+    console.log(`${chalk.cyan('│')} ${chalk.bold('Message Type')} : ${chalk.magenta(msgType)}`);
+    console.log(`${chalk.cyan('│')} ${chalk.bold('Waktu')}        : ${chalk.gray(timeStr)}`);
+    console.log(chalk.yellow('├─── [ PAYLOAD LENGKAP ] ──────────────────────────────────────────'));
+    try {
+      if (typeof message.String === 'function') {
+        console.log(message.String(2));
+      } else {
+        console.log(JSON.stringify(message, null, 2));
+      }
+    } catch {
+      console.log(message);
+    }
+    console.log(chalk.yellow('└───────────────────────────────────────────────────────────────────\n'));
+  } catch (err) {
+    console.error('[DEBUG LOG ERROR]', err);
+  }
+}
 
 async function launch() {
   try {
@@ -85,9 +113,12 @@ async function launch() {
 
     const question = (text) =>
       new Promise((resolve) => rl.question(text, resolve));
-    if (fs.existsSync(session) && !fs.existsSync(session + '/creds.json'))
-      await fs.rmdir(session, { recursive: true }, (err) => {});
-    if (!fs.existsSync(session + '/creds.json')) {
+    if (
+      (await Func.exists(session)) &&
+      !(await Func.exists(session + '/creds.json'))
+    )
+      await fs.rm(session, { recursive: true, force: true });
+    if (!(await Func.exists(session + '/creds.json'))) {
       let quest = `\n${chalk.red.bold('╭──────────────────────────────────────────────────────╮')}\n${chalk.red.bold('│')} ${chalk.bold('❗️ Anda belum memiliki session ❗️')} ${chalk.red.bold('│')}\n${chalk.red.bold('╰──────────────────────────────────────────────────────╯')}\n            \n${chalk.green('🏷 Pilih salah satu dari opsi berikut untuk menautkan perangkat:')}\n${chalk.blue('▪︎ qr')}\n${chalk.blue('▪︎ pairing')}\n\n${chalk.yellow('* Ketik salah satu dari opsi di atas, contoh:')} ${chalk.blue.bold('pairing')}\n\n${chalk.yellow('Please type here: ')}`;
 
       await sleep(1000);
@@ -101,12 +132,46 @@ async function launch() {
       }
     }
 
+    let { state, saveCreds } = await useMultiFileAuthState(session);
+
+    Exp = makeWASocket({
+      logger,
+      version: [
+        2,
+        3000,
+        await fetch(
+          'https://raw.githubusercontent.com/Rifza123/Experimental-Bell/refs/heads/master/version'
+        )
+          .then((a) => a.text())
+          .then(async (t) =>
+            /^\d+$/.test(t.trim())
+              ? Number(t.trim())
+              : Number((await fs.readFile('./version', 'utf8')).trim())
+          )
+          .catch(async () =>
+            Number((await fs.readFile('./version', 'utf8')).trim())
+          ),
+      ],
+      printQRInTerminal: !global.pairingCode,
+      browser: Browsers.ubuntu('Chrome'),
+      auth: state,
+      retryRequestDelayMs: 5000,
+      maxMsgRetryCount: 2,
+      getMessage: async () => undefined,
+      cachedGroupMetadata: (jid) => Func.metadata.get(jid),
+      syncFullHistory: false,
+    });
+
     const { groupMetadata } = Exp;
     Func.init({ Exp, groupMetadata });
     Func.metadata.init();
+    Exp.func = Func;
+
+    /*!-======[ Detect File Update ]======-!*/
+    Detector ??= detector({ Exp, store });
+
     Exp.groupMetadata = async (id, update, force) =>
       Func.getGroupMetadata(id, update, force);
-    Exp.func = Func;
 
     if (global.pairingCode && !Exp.authState.creds.registered) {
       const phoneNumber = await question(
@@ -133,6 +198,24 @@ async function launch() {
     /*!-======[ EVENTS Exp ]======-!*/
     Exp.ev.on('connection.update', async (update) => {
       await Connecting({ update, Exp, Boom, DisconnectReason, sleep, launch });
+      if (update.connection === 'open') {
+        const { default: jadibot, checkExpiredJadibots } = await `${fol[1]}jadibot.js`.r();
+        await checkExpiredJadibots().catch(e => console.error(e));
+        Data.jadibot ??= {};
+        for (let slot of Object.keys(Data.jadibot)) {
+          const info = Data.jadibot[slot];
+          if (info && info.botNumber) {
+            console.log(`[AUTOLOAD] Reconnecting Jadibot: ${info.botNumber}`);
+            jadibot({
+              Exp,
+              id: info.owner,
+              botNumber: info.botNumber,
+              pairing: false,
+              expired: info.expired || 0,
+            }).catch(e => console.error(e));
+          }
+        }
+      }
     });
 
     Exp.ev.on('creds.update', saveCreds);
@@ -168,6 +251,47 @@ async function launch() {
 
     Exp.ev.on('messages.upsert', async ({ type, messages }) => {
       for (let message of messages) {
+        if (global.debug && !message?.key?.fromMe) {
+          debugLogMessage(message, type);
+        }
+        let isMeta =
+          message?.key?.remoteJid?.includes('13135550002') ||
+          message?.key?.remoteJid?.endsWith('@bot') ||
+          message?.key?.participant?.includes('13135550002') ||
+          message?.participant?.includes('13135550002');
+
+        if (
+          isMeta ||
+          message?.message?.botForwardedMessage ||
+          message?.message?.messageContextInfo?.botMetadata
+        ) {
+          if (message?.message) {
+            const relayJson = JSON.stringify(
+              message.message,
+              (k, v) =>
+                v instanceof Uint8Array ||
+                Buffer.isBuffer(v) ||
+                (v?.type === 'Buffer' && Array.isArray(v?.data))
+                  ? Buffer.from(v?.data || v).toString('base64')
+                  : v,
+              2
+            );
+            console.log('[META_RELAY_PAYLOAD_JSON]\n' + relayJson);
+          } else {
+            const cleanStr = JSON.stringify(
+              message,
+              (k, v) =>
+                v instanceof Uint8Array ||
+                Buffer.isBuffer(v) ||
+                (v?.type === 'Buffer' && Array.isArray(v?.data))
+                  ? `<Buffer ${v.length || v.data?.length} bytes>`
+                  : v,
+              2
+            );
+            console.log('[META AI MSG JSON]\n' + cleanStr);
+          }
+          if (isMeta) continue;
+        }
         const cht = {
           ...message,
           id: message?.key?.remoteJid,
@@ -186,33 +310,76 @@ async function launch() {
           continue;
         if (!(isMessage || isStubType)) return;
         if (cht.key.remoteJid === 'status@broadcast') {
-          if (!cfg.reactsw)
+          if (cht.key.fromMe) return;
+          if (!cfg.reactsw || typeof cfg.reactsw !== 'object')
             cfg.reactsw = {
               on: false,
               emojis: ['😍', '😂', '😬', '🤢', '🤮', '🥰', '😭'],
             };
 
-          if (cfg.reactsw.on) {
-            let { emojis } = cfg.reactsw;
-            await Exp.sendMessage(
-              cht.id,
-              { react: { key: cht.key, text: emojis.getRandom() } },
-              {
-                statusJidList: [
-                  cht.key.participant,
-                  Exp.user.id.split(':')[0] + from.sender,
-                ],
-              }
-            );
-          } else if (cfg.autoreadsw == true) {
-            await Exp.readMessages([cht.key]);
-            let typ = getContentType(cht.message);
-            console.log(
-              /protocolMessage/i.test(typ)
-                ? `${cht.key.participant.split('@')[0]} Deleted story❗`
-                : 'View user stories : ' + cht.key.participant.split('@')[0]
-            );
+          let participant =
+            cht.key.remoteJidAlt ||
+            cht.key.participant ||
+            cht.participant ||
+            '';
+          let statusKey = {
+            ...cht.key,
+            participant: participant || cht.key.participant,
+          };
+
+          if (
+            cfg.autoreadsw === true ||
+            cfg.autoreadsw === 'on' ||
+            cfg.autoreadsw === 'true'
+          ) {
+            try {
+              await Exp.readMessages([statusKey]);
+              let typ = getContentType(cht.message);
+              let senderNum = participant
+                ? participant.split('@')[0]
+                : 'Unknown';
+              console.log(
+                /protocolMessage/i.test(typ)
+                  ? `${senderNum} Deleted story❗`
+                  : 'View user stories : ' + senderNum
+              );
+            } catch (err) {
+              console.error('Error auto read SW:', err);
+            }
           }
+
+          if (cfg.reactsw && cfg.reactsw.on) {
+            try {
+              let { emojis } = cfg.reactsw;
+              let validEmojis = (Array.isArray(emojis) ? emojis : []).filter(
+                (e) => e && e !== '\uFE0F'
+              );
+              if (validEmojis.length === 0) {
+                validEmojis = ['😍', '😂', '😬', '🤢', '🤮', '🥰', '😭'];
+              }
+              let textReact = validEmojis.getRandom();
+              let myJid = Exp.user.id.split(':')[0] + '@s.whatsapp.net';
+              let statusJidList = Array.from(
+                new Set(
+                  [
+                    participant,
+                    cht.key.participant,
+                    cht.key.remoteJidAlt,
+                    myJid,
+                  ].filter(Boolean)
+                )
+              );
+
+              await Exp.sendMessage(
+                cht.id,
+                { react: { key: cht.key, text: textReact } },
+                { statusJidList }
+              );
+            } catch (err) {
+              console.error('Error auto react SW:', err);
+            }
+          }
+
           return;
         } else {
           let exs = { cht: { ...cht }, Exp, is: {}, store, chatDb, sewaDb };
