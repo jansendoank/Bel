@@ -1,0 +1,821 @@
+[
+  {
+    "name": "connection",
+    "path": "connection",
+    "type": "directory",
+    "children": [
+      {
+        "name": "jadibot.js",
+        "path": "connection/jadibot.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 8298
+      },
+      {
+        "name": "systemConnext.js",
+        "path": "connection/systemConnext.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 5169
+      }
+    ]
+  },
+  {
+    "name": "helpers",
+    "path": "helpers",
+    "type": "directory",
+    "children": [
+      {
+        "name": "Events",
+        "path": "helpers/Events",
+        "type": "directory",
+        "children": [
+          {
+            "name": "about.js",
+            "path": "helpers/Events/about.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 1646
+          },
+          {
+            "name": "ai.js",
+            "path": "helpers/Events/ai.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 69980
+          },
+          {
+            "name": "bratjoko.js",
+            "path": "helpers/Events/bratjoko.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 7440
+          },
+          {
+            "name": "bratmega.js",
+            "path": "helpers/Events/bratmega.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 6198
+          },
+          {
+            "name": "bratr.js",
+            "path": "helpers/Events/bratr.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 7349
+          },
+          {
+            "name": "converter.js",
+            "path": "helpers/Events/converter.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 33157
+          },
+          {
+            "name": "downloader.js",
+            "path": "helpers/Events/downloader.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 24461
+          },
+          {
+            "name": "game.js",
+            "path": "helpers/Events/game.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 92947
+          },
+          {
+            "name": "group.js",
+            "path": "helpers/Events/group.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 75486
+          },
+          {
+            "name": "iqcg.js",
+            "path": "helpers/Events/iqcg.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 9212
+          },
+          {
+            "name": "maker.js",
+            "path": "helpers/Events/maker.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 13514
+          },
+          {
+            "name": "others.js",
+            "path": "helpers/Events/others.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 59681
+          },
+          {
+            "name": "owner.js",
+            "path": "helpers/Events/owner.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 128282
+          },
+          {
+            "name": "relationship.js",
+            "path": "helpers/Events/relationship.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 40535
+          },
+          {
+            "name": "reloadevents.js",
+            "path": "helpers/Events/reloadevents.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 319
+          },
+          {
+            "name": "rpg.js",
+            "path": "helpers/Events/rpg.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 56260
+          },
+          {
+            "name": "search.js",
+            "path": "helpers/Events/search.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 17645
+          },
+          {
+            "name": "sepamotepe.js",
+            "path": "helpers/Events/sepamotepe.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 16802
+          },
+          {
+            "name": "stabilkan.js",
+            "path": "helpers/Events/stabilkan.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 4550
+          },
+          {
+            "name": "tools.js",
+            "path": "helpers/Events/tools.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 19983
+          },
+          {
+            "name": "ttqc.js",
+            "path": "helpers/Events/ttqc.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 10441
+          },
+          {
+            "name": "tts.js",
+            "path": "helpers/Events/tts.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 4272
+          },
+          {
+            "name": "werewolf.js",
+            "path": "helpers/Events/werewolf.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 32981
+          },
+          {
+            "name": "wwpc.js",
+            "path": "helpers/Events/wwpc.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 6497
+          }
+        ]
+      },
+      {
+        "name": "client.js",
+        "path": "helpers/client.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 6824
+      },
+      {
+        "name": "eventGame.js",
+        "path": "helpers/eventGame.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 4980
+      },
+      {
+        "name": "events.js",
+        "path": "helpers/events.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 17885
+      },
+      {
+        "name": "initialize.js",
+        "path": "helpers/initialize.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 36533
+      },
+      {
+        "name": "interactive.js",
+        "path": "helpers/interactive.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 57239
+      },
+      {
+        "name": "jadibot.js",
+        "path": "helpers/jadibot.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 29832
+      },
+      {
+        "name": "reaction.js",
+        "path": "helpers/reaction.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 4475
+      },
+      {
+        "name": "stubTypeMsg.js",
+        "path": "helpers/stubTypeMsg.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 14568
+      },
+      {
+        "name": "utils.js",
+        "path": "helpers/utils.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 24045
+      }
+    ]
+  },
+  {
+    "name": "machine",
+    "path": "machine",
+    "type": "directory",
+    "children": [
+      {
+        "name": "chess.js",
+        "path": "machine/chess.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 63510
+      },
+      {
+        "name": "dashboard.js",
+        "path": "machine/dashboard.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 11346
+      },
+      {
+        "name": "deepseek.js",
+        "path": "machine/deepseek.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 668
+      },
+      {
+        "name": "encrypt.js",
+        "path": "machine/encrypt.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 2152
+      },
+      {
+        "name": "gemini.js",
+        "path": "machine/gemini.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 389
+      },
+      {
+        "name": "gpt3.js",
+        "path": "machine/gpt3.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 407
+      },
+      {
+        "name": "gtts.js",
+        "path": "machine/gtts.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 13598
+      },
+      {
+        "name": "imageEdit.js",
+        "path": "machine/imageEdit.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 1431
+      },
+      {
+        "name": "jadwalsholat.js",
+        "path": "machine/jadwalsholat.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 6978
+      },
+      {
+        "name": "livechart.js",
+        "path": "machine/livechart.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 37598
+      },
+      {
+        "name": "musixsearch.js",
+        "path": "machine/musixsearch.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 613
+      },
+      {
+        "name": "reasoner.js",
+        "path": "machine/reasoner.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 304
+      },
+      {
+        "name": "transcribe.js",
+        "path": "machine/transcribe.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 496
+      },
+      {
+        "name": "werewolf.js",
+        "path": "machine/werewolf.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 44026
+      }
+    ]
+  },
+  {
+    "name": "toolkit",
+    "path": "toolkit",
+    "type": "directory",
+    "children": [
+      {
+        "name": "db",
+        "path": "toolkit/db",
+        "type": "directory",
+        "children": [
+          {
+            "name": "user",
+            "path": "toolkit/db/user",
+            "type": "directory",
+            "children": [
+              {
+                "name": "inventories.json",
+                "path": "toolkit/db/user/inventories.json",
+                "type": "file",
+                "isCustom": false,
+                "size": 2
+              },
+              {
+                "name": "users.json",
+                "path": "toolkit/db/user/users.json",
+                "type": "file",
+                "isCustom": false,
+                "size": 2
+              }
+            ]
+          },
+          {
+            "name": "ShopRPG.json",
+            "path": "toolkit/db/ShopRPG.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 81
+          },
+          {
+            "name": "antispam.json",
+            "path": "toolkit/db/antispam.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "audio.json",
+            "path": "toolkit/db/audio.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 753
+          },
+          {
+            "name": "badwords.json",
+            "path": "toolkit/db/badwords.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 386
+          },
+          {
+            "name": "ch_reaction.json",
+            "path": "toolkit/db/ch_reaction.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "chats.json",
+            "path": "toolkit/db/chats.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "cmd.json",
+            "path": "toolkit/db/cmd.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 50
+          },
+          {
+            "name": "daduMedia.json",
+            "path": "toolkit/db/daduMedia.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "fquoted.json",
+            "path": "toolkit/db/fquoted.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 9918
+          },
+          {
+            "name": "jadibot.json",
+            "path": "toolkit/db/jadibot.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "jadibotDb.json",
+            "path": "toolkit/db/jadibotDb.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "jadibotMap.json",
+            "path": "toolkit/db/jadibotMap.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "lids.json",
+            "path": "toolkit/db/lids.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "links.json",
+            "path": "toolkit/db/links.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 3
+          },
+          {
+            "name": "preferences.json",
+            "path": "toolkit/db/preferences.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 3
+          },
+          {
+            "name": "preferencesBot.json",
+            "path": "toolkit/db/preferencesBot.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "response.json",
+            "path": "toolkit/db/response.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 7057
+          },
+          {
+            "name": "setCmd.json",
+            "path": "toolkit/db/setCmd.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 1259
+          },
+          {
+            "name": "sewa.json",
+            "path": "toolkit/db/sewa.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 2
+          },
+          {
+            "name": "stickersCmd.json",
+            "path": "toolkit/db/stickersCmd.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 3
+          }
+        ]
+      },
+      {
+        "name": "set",
+        "path": "toolkit/set",
+        "type": "directory",
+        "children": [
+          {
+            "name": "locale",
+            "path": "toolkit/set/locale",
+            "type": "directory",
+            "children": [
+              {
+                "name": "en",
+                "path": "toolkit/set/locale/en",
+                "type": "directory",
+                "children": [
+                  {
+                    "name": "about.js",
+                    "path": "toolkit/set/locale/en/about.js",
+                    "type": "file",
+                    "isCustom": false,
+                    "size": 6949
+                  },
+                  {
+                    "name": "reaction.js",
+                    "path": "toolkit/set/locale/en/reaction.js",
+                    "type": "file",
+                    "isCustom": false,
+                    "size": 1729
+                  }
+                ]
+              },
+              {
+                "name": "id",
+                "path": "toolkit/set/locale/id",
+                "type": "directory",
+                "children": [
+                  {
+                    "name": "others.js",
+                    "path": "toolkit/set/locale/id/others.js",
+                    "type": "file",
+                    "isCustom": false,
+                    "size": 235
+                  }
+                ]
+              },
+              {
+                "name": "en.js",
+                "path": "toolkit/set/locale/en.js",
+                "type": "file",
+                "isCustom": false,
+                "size": 30261
+              },
+              {
+                "name": "id.js",
+                "path": "toolkit/set/locale/id.js",
+                "type": "file",
+                "isCustom": false,
+                "size": 34176
+              }
+            ]
+          },
+          {
+            "name": "bell.jpg",
+            "path": "toolkit/set/bell.jpg",
+            "type": "file",
+            "isCustom": false,
+            "size": 52823
+          },
+          {
+            "name": "config.json",
+            "path": "toolkit/set/config.json",
+            "type": "file",
+            "isCustom": false,
+            "size": 6181
+          },
+          {
+            "name": "global.js",
+            "path": "toolkit/set/global.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 7472
+          },
+          {
+            "name": "prototype.js",
+            "path": "toolkit/set/prototype.js",
+            "type": "file",
+            "isCustom": false,
+            "size": 81960
+          },
+          {
+            "name": "string.prototype.js",
+            "path": "toolkit/set/string.prototype.js",
+            "type": "file",
+            "isCustom": true,
+            "size": 43949
+          },
+          {
+            "name": "ulartangga.jpg",
+            "path": "toolkit/set/ulartangga.jpg",
+            "type": "file",
+            "isCustom": false,
+            "size": 77646
+          }
+        ]
+      },
+      {
+        "name": "catbox.js",
+        "path": "toolkit/catbox.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 585
+      },
+      {
+        "name": "cdn.termai.js",
+        "path": "toolkit/cdn.termai.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 774
+      },
+      {
+        "name": "color.js",
+        "path": "toolkit/color.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 375
+      },
+      {
+        "name": "detector.js",
+        "path": "toolkit/detector.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 34186
+      },
+      {
+        "name": "exif.js",
+        "path": "toolkit/exif.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 5493
+      },
+      {
+        "name": "ffmpeg.js",
+        "path": "toolkit/ffmpeg.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 4890
+      },
+      {
+        "name": "func.js",
+        "path": "toolkit/func.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 41756
+      },
+      {
+        "name": "inventory.js",
+        "path": "toolkit/inventory.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 8035
+      },
+      {
+        "name": "mediafire.js",
+        "path": "toolkit/mediafire.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 1120
+      },
+      {
+        "name": "mongodb.js",
+        "path": "toolkit/mongodb.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 2190
+      },
+      {
+        "name": "prettier.js",
+        "path": "toolkit/prettier.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 361
+      },
+      {
+        "name": "role.js",
+        "path": "toolkit/role.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 842
+      },
+      {
+        "name": "store.js",
+        "path": "toolkit/store.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 724
+      },
+      {
+        "name": "telegraph.js",
+        "path": "toolkit/telegraph.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 966
+      },
+      {
+        "name": "tmpfiles.js",
+        "path": "toolkit/tmpfiles.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 711
+      },
+      {
+        "name": "usr.js",
+        "path": "toolkit/usr.js",
+        "type": "file",
+        "isCustom": false,
+        "size": 10742
+      }
+    ]
+  },
+  {
+    "name": ".prettierignore",
+    "path": ".prettierignore",
+    "type": "file",
+    "isCustom": false,
+    "size": 58
+  },
+  {
+    "name": ".prettierrc",
+    "path": ".prettierrc",
+    "type": "file",
+    "isCustom": false,
+    "size": 85
+  },
+  {
+    "name": "LICENSE",
+    "path": "LICENSE",
+    "type": "file",
+    "isCustom": false,
+    "size": 1016
+  },
+  {
+    "name": "index.js",
+    "path": "index.js",
+    "type": "file",
+    "isCustom": false,
+    "size": 16750
+  },
+  {
+    "name": "package-lock.json",
+    "path": "package-lock.json",
+    "type": "file",
+    "isCustom": false,
+    "size": 164714
+  },
+  {
+    "name": "package.json",
+    "path": "package.json",
+    "type": "file",
+    "isCustom": false,
+    "size": 1319
+  },
+  {
+    "name": "readme.md",
+    "path": "readme.md",
+    "type": "file",
+    "isCustom": false,
+    "size": 7458
+  },
+  {
+    "name": "version",
+    "path": "version",
+    "type": "file",
+    "isCustom": false,
+    "size": 10
+  }
+]
