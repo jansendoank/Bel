@@ -165,21 +165,23 @@ export class func {
       ? 'sticker'
       : type === 'videoMessage'
         ? 'video'
-        : type === 'liveLocationMessage'
-          ? 'liveLocation'
-          : type === 'locationMessage'
-            ? 'location'
-            : type === 'documentMessage'
-              ? 'document'
-              : type === 'audioMessage'
-                ? 'audio'
-                : type === 'imageMessage'
-                  ? 'image'
-                  : type === 'viewOnceMessage'
-                    ? 'viewOnce'
-                    : type === 'viewOnceMessageV2'
+        : type === 'ptvMessage'
+          ? 'video'
+          : type === 'liveLocationMessage'
+            ? 'liveLocation'
+            : type === 'locationMessage'
+              ? 'location'
+              : type === 'documentMessage'
+                ? 'document'
+                : type === 'audioMessage'
+                  ? 'audio'
+                  : type === 'imageMessage'
+                    ? 'image'
+                    : type === 'viewOnceMessage'
                       ? 'viewOnce'
-                      : type;
+                      : type === 'viewOnceMessageV2'
+                        ? 'viewOnce'
+                        : type;
   };
 
   getGroupAdmins = (participants) => {
@@ -343,6 +345,7 @@ export class func {
   };
 
   getGroupMetadata = async (chtId, update = false, force = false) => {
+    if (!chtId || !chtId.endsWith('@g.us')) return null;
     this.metadata.init();
     let hasData = this.metadata.has(chtId);
     let now = Date.now();
@@ -388,36 +391,51 @@ export class func {
           `getGroupMetadata: percobaan ${attempt} gagal saat get`,
           err
         );
-        if (attempt === 2) throw err;
+        if (attempt === 2) {
+          if (hasData && metadata?.metadata) {
+            return metadata.metadata;
+          }
+          return null;
+        }
         await sleep(5000);
       }
     }
 
-    if (groupMetadata.addressingMode == 'lid') {
-      const group = await getBinaryNodeChild(
-        await this.Exp.query({
-          tag: 'iq',
-          attrs: {
-            type: 'get',
-            xmlns: 'w:g2',
-            to: chtId,
-          },
-          content: [{ tag: 'query', attrs: { request: 'interactive' } }],
-        }),
-        'group'
-      );
+    if (!groupMetadata) {
+      return hasData && metadata?.metadata ? metadata.metadata : null;
+    }
 
-      groupMetadata.participants = await getBinaryNodeChildren(
-        group,
-        'participant'
-      ).map(({ attrs }) => {
-        return {
-          id: attrs.phone_number,
-          lid: attrs.lid || attrs.jid,
-          admin: attrs.type || null,
-        };
-      });
-      console.log(this.lid(groupMetadata.participants));
+    if (groupMetadata.addressingMode == 'lid') {
+      try {
+        const group = await getBinaryNodeChild(
+          await this.Exp.query({
+            tag: 'iq',
+            attrs: {
+              type: 'get',
+              xmlns: 'w:g2',
+              to: chtId,
+            },
+            content: [{ tag: 'query', attrs: { request: 'interactive' } }],
+          }),
+          'group'
+        );
+
+        if (group) {
+          groupMetadata.participants = await getBinaryNodeChildren(
+            group,
+            'participant'
+          ).map(({ attrs }) => {
+            return {
+              id: attrs.phone_number,
+              lid: attrs.lid || attrs.jid,
+              admin: attrs.type || null,
+            };
+          });
+          console.log(this.lid(groupMetadata.participants));
+        }
+      } catch (e) {
+        console.error('Error fetching lid participants:', e);
+      }
     }
 
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -432,7 +450,6 @@ export class func {
           `getGroupMetadata: percobaan ${attempt} gagal saat set metadata`,
           err
         );
-        if (attempt === 2) throw err;
       }
     }
     return groupMetadata;
@@ -817,6 +834,19 @@ export class func {
   toZeroIfInfinity(value) {
     return Number.isFinite(value) ? value : 0;
   }
+  parseMs = (milliseconds) => {
+    if (typeof milliseconds !== 'number' || isNaN(milliseconds)) return '0s';
+    const seconds = Math.floor((milliseconds / 1000) % 60);
+    const minutes = Math.floor((milliseconds / (1000 * 60)) % 60);
+    const hours = Math.floor((milliseconds / (1000 * 60 * 60)) % 24);
+    const days = Math.floor(milliseconds / (1000 * 60 * 60 * 24));
+    let res = [];
+    if (days > 0) res.push(`${days}d`);
+    if (hours > 0) res.push(`${hours}h`);
+    if (minutes > 0) res.push(`${minutes}m`);
+    if (seconds > 0) res.push(`${seconds}s`);
+    return res.length > 0 ? res.join(' ') : '0s';
+  };
 
   parseNumber(milliseconds) {
     return {
@@ -900,6 +930,12 @@ export class func {
     else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
     else if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';
     else return (bytes / 1073741824).toFixed(2) + ' GB';
+  };
+
+  progressBar = (percent, length = 10, fillChar = '█', emptyChar = '░') => {
+    let p = Math.min(100, Math.max(0, parseFloat(percent) || 0));
+    let filled = Math.min(length, Math.max(0, Math.round((p / 100) * length)));
+    return fillChar.repeat(filled) + emptyChar.repeat(length - filled);
   };
 
   getSystemStats = async () => {
@@ -1113,24 +1149,51 @@ export class func {
       let outputPath = path.resolve(output);
       const tarFilePath = outputPath.replace(/\.gz$/, '');
 
-      const excludeArgs = [
-        "--exclude='node_modules'",
-        "--exclude='.git'",
-        "--exclude='.npm'",
-        "--exclude='connection/session/*'",
-        "--exclude='connection/session/**'",
-      ].join(' ');
+      const baseIgnored = [
+        'node_modules',
+        '.git',
+        '.npm',
+        '.config',
+        '.pm2',
+        'tmp',
+      ];
+      let excludes = baseIgnored.map((dir) => `--exclude='${dir}'`);
+      let credsToAppend = [];
 
-      const credsPath = path.join(
-        sourceFolder,
-        'connection',
-        'session',
-        'creds.json'
-      );
-      const relativeCreds = `${path.basename(sourceFolder)}/connection/session/creds.json`;
+      const connDir = path.join(sourceFolder, 'connection');
+      if (fs.existsSync(connDir)) {
+        try {
+          const connEntries = fs.readdirSync(connDir, { withFileTypes: true });
+          for (const entry of connEntries) {
+            if (entry.isDirectory()) {
+              const relSessionDir = path.posix.join('connection', entry.name);
+              excludes.push(`--exclude='${relSessionDir}/*'`);
+              excludes.push(`--exclude='${relSessionDir}/**'`);
 
-      const appendCreds = fs.existsSync(credsPath)
-        ? `&& tar --append -f ${tarFilePath} -C ${path.dirname(sourceFolder)} ${relativeCreds}`
+              const credsPath = path.join(
+                sourceFolder,
+                'connection',
+                entry.name,
+                'creds.json'
+              );
+              if (fs.existsSync(credsPath)) {
+                credsToAppend.push(
+                  `${path.basename(sourceFolder)}/connection/${entry.name}/creds.json`
+                );
+              }
+            }
+          }
+        } catch {}
+      }
+
+      const excludeArgs = excludes.join(' ');
+      const appendCreds = credsToAppend.length
+        ? credsToAppend
+            .map(
+              (relCreds) =>
+                `&& tar --append -f ${tarFilePath} -C ${path.dirname(sourceFolder)} ${relCreds}`
+            )
+            .join(' ')
         : '';
 
       const tarCmd = `
@@ -1431,5 +1494,14 @@ export class func {
     ).map((url) =>
       (url.startsWith('http') ? url : 'https://' + url).replace(/['"`<>]/g, '')
     );
+  }
+
+  async exists(path) {
+    try {
+      await fs.promises.access(path);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

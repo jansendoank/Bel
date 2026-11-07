@@ -53,6 +53,17 @@ let logger = pino({ level: 'silent' });
 let store = makeInMemoryStore();
 let Func = new func({ store });
 
+if (!Func.exists) {
+  Func.exists = async (p) => {
+    try {
+      await fs.access(p);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
 let Exp, Detector;
 
 global.debug = process.argv.includes('debug') || process.argv.includes('--debug');
